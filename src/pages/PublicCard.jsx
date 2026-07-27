@@ -4,6 +4,8 @@ import { TEMPLATES } from '../templates'
 import { api } from '../lib/api'
 import CardView from '../components/CardView'
 import DesktopCard from '../desktop/DesktopCard'
+import PhoneFrame from '../components/PhoneFrame'
+import ViewToggle from '../components/ViewToggle'
 import NotFound from './NotFound'
 
 /** Skeleton shown while the card is loading — mirrors the card's real rhythm. */
@@ -34,6 +36,23 @@ export default function PublicCard() {
   const { username } = useParams()
   const [params] = useSearchParams()
   const [state, setState] = useState({ status: 'loading', card: null })
+
+  /**
+   * Which layout to show. `wide` is the screen's opinion, `view` is the
+   * visitor's — tracked with matchMedia rather than CSS classes because the two
+   * layouts are different component trees, not one tree styled two ways.
+   */
+  const [view, setView] = useState('desktop')
+  const [wide, setWide] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  )
+
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1024px)')
+    const onChange = (event) => setWide(event.matches)
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
 
   /**
    * `?template=` lets the dashboard open this page as a preview of a design it
@@ -105,15 +124,32 @@ export default function PublicCard() {
 
   return (
     <div className="min-h-dvh bg-slate-100">
-      {/* No chrome on a visitor's card — the layout follows the screen alone.
-          Below lg the desktop layout is hidden and the phone card shown, so
-          small screens always get the layout built for them. */}
-      <div className="hidden lg:block">
+      {/* The screen decides the default; the toggle lets a visitor override it.
+          It only appears on a wide screen — on a phone there is no room for the
+          desktop layout, so there would be nothing to switch to. */}
+      {wide && (
+        <ViewToggle
+          view={view}
+          onChange={setView}
+          className="fixed right-5 top-5 z-50"
+        />
+      )}
+
+      {wide && view === 'desktop' ? (
         <DesktopCard card={card} />
-      </div>
-      <main className="mx-auto min-h-dvh w-full max-w-md bg-white shadow-[var(--shadow-lift)] lg:hidden">
-        <CardView card={card} />
-      </main>
+      ) : wide ? (
+        // The phone layout on a big screen, shown in the device it was drawn
+        // for rather than as a narrow column floating in the middle.
+        <div className="flex min-h-dvh items-center justify-center py-10">
+          <PhoneFrame scale="lg">
+            <CardView card={card} />
+          </PhoneFrame>
+        </div>
+      ) : (
+        <main className="mx-auto min-h-dvh w-full max-w-md bg-white shadow-[var(--shadow-lift)]">
+          <CardView card={card} />
+        </main>
+      )}
     </div>
   )
 }
