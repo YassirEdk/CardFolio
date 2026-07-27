@@ -1,0 +1,23 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vite
+
+# secrets — DATABASE_URL, JWT_SECRET, Google and Paddle keys all live here.
+# .env.example is the committed template and is the only one allowed through.
+.env
+.env.*
+!.env.example
+
+# graphify: a generated knowledge graph of this repo. Large, regenerable, and
+# it embeds source excerpts — no reason for it to be in history.
+graphify-out/
+
+# logs and editor noise
+*.log
+npm-debug.log*
+.idea/
+.vscode/*
+!.vscode/extensions.json

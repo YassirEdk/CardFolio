@@ -1,0 +1,594 @@
+import 'dotenv/config'
+import express from 'express'
+import cors from 'cors'
+import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
+import { OAuth2Client } from 'google-auth-library'
+import { pool, query, transaction, toCard } from './db.js'
+
+const app = express()
+const PORT = process.env.PORT || 3001
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-change-me'
+
+/**
+ * Only the client ID is needed: we verify Google's ID token against Google's
+ * public keys. The client secret belongs to the authorization-code flow, which
+ * this app does not use — so it never has to live on this server.
+ */
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || ''
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID)
+
+// Data-URL images make request bodies large; allow room for them.
+app.use(express.json({ limit: '8mb' }))
+app.use(cors())
+
+/** Usernames the router reserves for app routes — must match src/App.jsx. */
+const RESERVED = new Set([
+  'login', 'signup', 'onboarding', 'dashboard', '404', 'about', 'pricing',
+  'templates', 'features', 'settings', 'admin', 'api', 'help',
+])
+
+const USERNAME_RE = /^[a-z0-9][a-z0-9-]{2,29}$/
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+const asyncRoute = (fn) => (req, res, next) => fn(req, res, next).catch(next)
+
+function sign(user) {
+  return jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' })
+}
+
+/**
+ * The user as the client is allowed to see it. `plan` defaults to free here as
+ * well as in the column: a row read before the migration ran, or any future
+ * query that forgets the field, must not hand out Pro.
+ */
+function publicUser(row) {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    email: row.email,
+    plan: row.plan || 'free',
+    weeklyEmail: row.weekly_email ?? true,
+  }
+}
+
+/** Rejects the request unless a valid bearer token is present. */
+function auth(req, res, next) {
+  const header = req.headers.authorization || ''
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null
+  if (!token) return res.status(401).json({ error: 'Not signed in' })
+  try {
+    req.userId = jwt.verify(token, JWT_SECRET).sub
+    next()
+  } catch {
+    res.status(401).json({ error: 'Session expired — please log in again' })
+  }
+}
+
+async function loadCardByUser(userId) {
+  const { rows } = await query('SELECT * FROM cards WHERE user_id = $1', [userId])
+  if (!rows[0]) return null
+  const { rows: links } = await query(
+    'SELECT * FROM card_links WHERE card_id = $1 ORDER BY position',
+    [rows[0].id]
+  )
+  return toCard(rows[0], links)
+}
+
+/* ------------------------------------------------------------------ health */
+
+app.get('/api/health', asyncRoute(async (_req, res) => {
+  const { rows } = await query('SELECT now() AS now')
+  res.json({ ok: true, time: rows[0].now })
+}))
+
+/* -------------------------------------------------------------- usernames */
+
+app.get('/api/usernames/:username/available', asyncRoute(async (req, res) => {
+  const username = String(req.params.username || '').toLowerCase()
+  if (!USERNAME_RE.test(username) || RESERVED.has(username)) {
+    return res.json({ available: false, reason: 'invalid' })
+  }
+  const { rows } = await query('SELECT 1 FROM cards WHERE lower(username) = $1', [username])
+  res.json({ available: rows.length === 0 })
+}))
+
+/* ------------------------------------------------------------------- auth */
+
+app.post('/api/auth/signup', asyncRoute(async (req, res) => {
+  const fullName = String(req.body.fullName || '').trim()
+  const email = String(req.body.email || '').trim()
+  const password = String(req.body.password || '')
+  const username = String(req.body.username || '').trim().toLowerCase()
+
+  const errors = {}
+  if (fullName.length < 2) errors.fullName = 'Enter your full name.'
+  if (!EMAIL_RE.test(email)) errors.email = 'Enter a valid email address.'
+  if (password.length < 8) errors.password = 'Use at least 8 characters.'
+  // A username may still be sent (older clients, scripts); it is validated when
+  // it is. The signup form no longer asks — picking the card URL is a Pro
+  // feature, so a new account gets one derived from its email.
+  if (username && (!USERNAME_RE.test(username) || RESERVED.has(username))) {
+    errors.username = 'Use 3–30 characters: lowercase letters, numbers or hyphens.'
+  }
+  if (Object.keys(errors).length) return res.status(400).json({ errors })
+
+  const passwordHash = await bcrypt.hash(password, 10)
+
+  try {
+    const result = await transaction(async (client) => {
+      const { rows: userRows } = await client.query(
+        'INSERT INTO users (full_name, email, password_hash) VALUES ($1,$2,$3) RETURNING *',
+        [fullName, email, passwordHash]
+      )
+      const user = userRows[0]
+      const handle = username || (await deriveUsername(client, email, fullName))
+      const { rows: cardRows } = await client.query(
+        `INSERT INTO cards (user_id, username, full_name, email) VALUES ($1,$2,$3,$4) RETURNING *`,
+        [user.id, handle, fullName, email]
+      )
+      return { user, card: toCard(cardRows[0]) }
+    })
+
+    res.status(201).json({
+      token: sign(result.user),
+      user: publicUser(result.user),
+      card: result.card,
+    })
+  } catch (error) {
+    if (error.code === '23505') {
+      const field = error.constraint === 'cards_username_key' ? 'username' : 'email'
+      return res.status(409).json({
+        errors: {
+          [field]:
+            field === 'username' ? 'That username is already taken.' : 'An account with this email already exists.',
+        },
+      })
+    }
+    throw error
+  }
+}))
+
+app.post('/api/auth/login', asyncRoute(async (req, res) => {
+  const email = String(req.body.email || '').trim()
+  const password = String(req.body.password || '')
+
+  const { rows } = await query('SELECT * FROM users WHERE lower(email) = lower($1)', [email])
+  const user = rows[0]
+  // Same message either way so the endpoint can't be used to enumerate emails.
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    return res.status(401).json({ error: 'That email and password don’t match.' })
+  }
+
+  res.json({
+    token: sign(user),
+    user: publicUser(user),
+    card: await loadCardByUser(user.id),
+  })
+}))
+
+/**
+ * Turns "john.doe@gmail.com" into a free username: johndoe, johndoe2, …
+ * Google gives us no handle, so we derive one and let the user change it later.
+ */
+async function deriveUsername(client, email, fullName) {
+  const seed =
+    String(email || '').split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '') ||
+    String(fullName || '').toLowerCase().replace(/[^a-z0-9-]/g, '') ||
+    'member'
+  const base = seed.replace(/^-+/, '').slice(0, 24).padEnd(3, '0')
+
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const candidate = attempt === 0 ? base : `${base}${attempt + 1}`
+    if (RESERVED.has(candidate) || !USERNAME_RE.test(candidate)) continue
+    const { rows } = await client.query('SELECT 1 FROM cards WHERE lower(username) = $1', [candidate])
+    if (rows.length === 0) return candidate
+  }
+  return `member${Date.now().toString().slice(-8)}`
+}
+
+app.post('/api/auth/google', asyncRoute(async (req, res) => {
+  if (!GOOGLE_CLIENT_ID) {
+    return res.status(501).json({ error: 'Google sign-in is not configured on this server.' })
+  }
+
+  const credential = String(req.body.credential || '')
+  if (!credential) return res.status(400).json({ error: 'Missing Google credential' })
+
+  // Verify against Google's public keys. Never trust the token's contents
+  // before this — the client could have sent anything.
+  let payload
+  try {
+    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID })
+    payload = ticket.getPayload()
+  } catch {
+    return res.status(401).json({ error: 'That Google sign-in could not be verified.' })
+  }
+
+  if (!payload?.email || !payload.email_verified) {
+    return res.status(401).json({ error: 'Your Google account has no verified email address.' })
+  }
+
+  /**
+   * Google hands out the avatar sized for a menu bar — the URL ends in
+   * `=s96-c`, i.e. 96×96 — but a card can paint that portrait a full screen
+   * tall, where a 96px source is a blurry mess. The same URL serves any size,
+   * so store one worth rendering.
+   */
+  const picture = payload.picture ? payload.picture.replace(/=s\d+/, '=s1024') : null
+
+  const result = await transaction(async (client) => {
+    // 1. Known Google account?
+    let { rows } = await client.query('SELECT * FROM users WHERE google_sub = $1', [payload.sub])
+    let user = rows[0]
+
+    // 2. Otherwise an existing email/password account — link them rather than
+    //    creating a duplicate the user can never log into.
+    if (!user) {
+      ;({ rows } = await client.query('SELECT * FROM users WHERE lower(email) = lower($1)', [payload.email]))
+      user = rows[0]
+      if (user) {
+        ;({ rows } = await client.query(
+          'UPDATE users SET google_sub = $1, avatar_url = COALESCE(avatar_url, $2) WHERE id = $3 RETURNING *',
+          [payload.sub, picture, user.id]
+        ))
+        user = rows[0]
+      }
+    }
+
+    // 3. Brand new account: create the user and an unpublished card.
+    if (!user) {
+      ;({ rows } = await client.query(
+        `INSERT INTO users (full_name, email, google_sub, avatar_url) VALUES ($1,$2,$3,$4) RETURNING *`,
+        [payload.name || payload.email.split("@")[0], payload.email, payload.sub, picture]
+      ))
+      user = rows[0]
+
+      const username = await deriveUsername(client, payload.email, payload.name)
+      await client.query(
+        `INSERT INTO cards (user_id, username, full_name, email, photo) VALUES ($1,$2,$3,$4,$5)`,
+        [user.id, username, user.full_name, user.email, picture]
+      )
+    }
+
+    const { rows: cardRows } = await client.query('SELECT * FROM cards WHERE user_id = $1', [user.id])
+    const { rows: links } = cardRows[0]
+      ? await client.query('SELECT * FROM card_links WHERE card_id = $1 ORDER BY position', [cardRows[0].id])
+      : { rows: [] }
+
+    return { user, card: toCard(cardRows[0], links) }
+  })
+
+  res.json({
+    token: sign(result.user),
+    user: publicUser(result.user),
+    card: result.card,
+  })
+}))
+
+app.get('/api/auth/me', auth, asyncRoute(async (req, res) => {
+  const { rows } = await query(
+    'SELECT id, full_name, email, plan, weekly_email FROM users WHERE id = $1',
+    [req.userId]
+  )
+  if (!rows[0]) return res.status(404).json({ error: 'Account not found' })
+  res.json({
+    user: publicUser(rows[0]),
+    card: await loadCardByUser(req.userId),
+  })
+}))
+
+/* ------------------------------------------------------------- public card */
+
+app.get('/api/cards/:username', asyncRoute(async (req, res) => {
+  const username = String(req.params.username || '').toLowerCase()
+  const { rows } = await query(
+    'SELECT * FROM cards WHERE lower(username) = $1 AND published = true',
+    [username]
+  )
+  if (!rows[0]) return res.status(404).json({ error: 'No card here yet' })
+
+  const { rows: links } = await query(
+    'SELECT * FROM card_links WHERE card_id = $1 ORDER BY position',
+    [rows[0].id]
+  )
+  res.json({ card: toCard(rows[0], links) })
+}))
+
+/** Fire-and-forget analytics. Never fails the caller. */
+app.post('/api/cards/:username/events', asyncRoute(async (req, res) => {
+  const type = String(req.body.type || '')
+  if (!['view', 'click', 'scan'].includes(type)) return res.status(400).json({ error: 'Unknown event' })
+
+  const { rows } = await query('SELECT id FROM cards WHERE lower(username) = $1', [
+    String(req.params.username).toLowerCase(),
+  ])
+  if (rows[0]) {
+    await query('INSERT INTO card_events (card_id, type, link_id) VALUES ($1,$2,$3)', [
+      rows[0].id,
+      type,
+      req.body.linkId || null,
+    ])
+  }
+  res.status(202).json({ ok: true })
+}))
+
+/* --------------------------------------------------------------- my card */
+
+app.get('/api/me/card', auth, asyncRoute(async (req, res) => {
+  const card = await loadCardByUser(req.userId)
+  if (!card) return res.status(404).json({ error: 'No card yet' })
+  res.json({ card })
+}))
+
+const TEXT_FIELDS = [
+  'full_name', 'title', 'bio', 'photo', 'logo', 'cover', 'company',
+  'phone', 'email', 'whatsapp', 'location', 'website', 'template', 'accent',
+]
+
+const FROM_CAMEL = { full_name: 'fullName' }
+
+/** Templates a free account may use. Everything else is part of Pro. */
+const FREE_TEMPLATES = new Set(['minimal'])
+
+/** Links a free card may carry — mirrors FREE_LINK_LIMIT in the editor. */
+const FREE_LINK_LIMIT = 4
+
+app.put('/api/me/card', auth, asyncRoute(async (req, res) => {
+  const body = req.body || {}
+  const { rows: owned } = await query(
+    'SELECT id, username, hide_branding, indexable FROM cards WHERE user_id = $1',
+    [req.userId]
+  )
+  if (!owned[0]) return res.status(404).json({ error: 'No card yet' })
+  const cardId = owned[0].id
+
+  // Username changes need the same validation as signup — and, since choosing
+  // the card URL is a Pro feature, an account on the paid plan.
+  let username = owned[0].username
+  if (body.username && String(body.username).toLowerCase() !== username.toLowerCase()) {
+    const { rows: account } = await query('SELECT plan FROM users WHERE id = $1', [req.userId])
+    if ((account[0]?.plan || 'free') !== 'pro') {
+      return res.status(403).json({ error: 'Choosing your card URL is part of the Pro plan.' })
+    }
+
+    username = String(body.username).toLowerCase()
+    if (!USERNAME_RE.test(username) || RESERVED.has(username)) {
+      return res.status(400).json({ errors: { username: 'That username is not allowed.' } })
+    }
+    const { rows: taken } = await query(
+      'SELECT 1 FROM cards WHERE lower(username) = $1 AND id <> $2',
+      [username, cardId]
+    )
+    if (taken.length) return res.status(409).json({ errors: { username: 'That username is already taken.' } })
+  }
+
+  // The picker locks Pro templates, but the lock has to hold here too — the
+  // client is free to send whatever it likes.
+  if ('template' in body && !FREE_TEMPLATES.has(body.template)) {
+    const { rows: account } = await query('SELECT plan FROM users WHERE id = $1', [req.userId])
+    if ((account[0]?.plan || 'free') !== 'pro') {
+      return res.status(403).json({ error: 'That template is part of the Pro plan.' })
+    }
+  }
+
+  const sets = ['username = $1']
+  const values = [username]
+  for (const column of TEXT_FIELDS) {
+    const key = FROM_CAMEL[column] || column
+    if (key in body) {
+      values.push(body[key] === '' ? null : body[key])
+      sets.push(`${column} = $${values.length}`)
+    }
+  }
+  if ('published' in body) {
+    values.push(Boolean(body.published))
+    sets.push(`published = $${values.length}`)
+  }
+
+  /**
+   * Card preferences. Both are Pro, so a free account is refused before
+   * anything is written — and only when the value would actually change, so a
+   * client that echoes the whole card back on every save isn't blocked.
+   */
+  const PREF_COLUMNS = { hideBranding: 'hide_branding', indexable: 'indexable' }
+  const prefChanges = Object.entries(PREF_COLUMNS).filter(
+    ([key, column]) => key in body && Boolean(body[key]) !== owned[0][column]
+  )
+  if (prefChanges.length) {
+    const { rows: account } = await query('SELECT plan FROM users WHERE id = $1', [req.userId])
+    if ((account[0]?.plan || 'free') !== 'pro') {
+      return res.status(403).json({ error: 'Card preferences are part of the Pro plan.' })
+    }
+    for (const [key, column] of prefChanges) {
+      values.push(Boolean(body[key]))
+      sets.push(`${column} = $${values.length}`)
+    }
+  }
+
+  /**
+   * Free cards carry at most FREE_LINK_LIMIT links. Counted on the links that
+   * would actually be stored — blank rows are dropped below, so a half-filled
+   * form shouldn't trip the limit. A card that came down from Pro keeps the
+   * links it has; this only refuses a request that would add more.
+   */
+  if (Array.isArray(body.links)) {
+    const filled = body.links.filter((link) => link?.url).length
+    if (filled > FREE_LINK_LIMIT) {
+      const { rows: account } = await query('SELECT plan FROM users WHERE id = $1', [req.userId])
+      if ((account[0]?.plan || 'free') !== 'pro') {
+        const { rows: current } = await query(
+          'SELECT count(*)::int AS n FROM card_links WHERE card_id = $1',
+          [cardId]
+        )
+        if (filled > current[0].n) {
+          return res.status(403).json({
+            error: `Free cards carry ${FREE_LINK_LIMIT} links. Pro removes the limit.`,
+          })
+        }
+      }
+    }
+  }
+
+  values.push(cardId)
+
+  const card = await transaction(async (client) => {
+    const { rows } = await client.query(
+      `UPDATE cards SET ${sets.join(', ')}, updated_at = now() WHERE id = $${values.length} RETURNING *`,
+      values
+    )
+
+    let links = []
+    if (Array.isArray(body.links)) {
+      await client.query('DELETE FROM card_links WHERE card_id = $1', [cardId])
+      for (const [index, link] of body.links.entries()) {
+        if (!link?.url) continue
+        const inserted = await client.query(
+          'INSERT INTO card_links (card_id, platform, url, label, position) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+          [cardId, link.platform || 'custom', link.url, link.label || null, index]
+        )
+        links.push(inserted.rows[0])
+      }
+    } else {
+      const existing = await client.query(
+        'SELECT * FROM card_links WHERE card_id = $1 ORDER BY position',
+        [cardId]
+      )
+      links = existing.rows
+    }
+
+    return toCard(rows[0], links)
+  })
+
+  res.json({ card })
+}))
+
+/* ------------------------------------------------------------------ plan */
+
+/**
+ * Switches the account's plan.
+ *
+ * NOTE: there is no billing yet, so this grants Pro on request — it is the
+ * seam a checkout goes behind, not a paywall. Until a payment provider is
+ * wired in, treat Pro as self-service.
+ */
+app.put('/api/me/plan', auth, asyncRoute(async (req, res) => {
+  const plan = String(req.body?.plan || '')
+  if (!['free', 'pro'].includes(plan)) {
+    return res.status(400).json({ error: 'Unknown plan' })
+  }
+
+  const { rows } = await query(
+    'UPDATE users SET plan = $1 WHERE id = $2 RETURNING id, full_name, email, plan, weekly_email',
+    [plan, req.userId]
+  )
+  if (!rows[0]) return res.status(404).json({ error: 'Account not found' })
+  res.json({ user: publicUser(rows[0]) })
+}))
+
+/**
+ * Account-level preferences. Only the weekly email lives here — the card
+ * preferences travel with the card.
+ *
+ * NOTE: nothing sends this email yet. The column records consent so the job,
+ * when it exists, has an audience to read; it is not a promise of delivery.
+ */
+app.put('/api/me/prefs', auth, asyncRoute(async (req, res) => {
+  if (!('weeklyEmail' in (req.body || {}))) {
+    return res.status(400).json({ error: 'Nothing to update' })
+  }
+
+  const { rows: account } = await query('SELECT plan, weekly_email FROM users WHERE id = $1', [req.userId])
+  if (!account[0]) return res.status(404).json({ error: 'Account not found' })
+
+  const next = Boolean(req.body.weeklyEmail)
+  if (next !== account[0].weekly_email && (account[0].plan || 'free') !== 'pro') {
+    return res.status(403).json({ error: 'Card preferences are part of the Pro plan.' })
+  }
+
+  const { rows } = await query(
+    'UPDATE users SET weekly_email = $1 WHERE id = $2 RETURNING id, full_name, email, plan, weekly_email',
+    [next, req.userId]
+  )
+  res.json({ user: publicUser(rows[0]) })
+}))
+
+/* -------------------------------------------------------------- analytics */
+
+app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
+  const { rows: owned } = await query('SELECT id FROM cards WHERE user_id = $1', [req.userId])
+  if (!owned[0]) return res.status(404).json({ error: 'No card yet' })
+  const cardId = owned[0].id
+
+  const { rows: totals } = await query(
+    `SELECT type, count(*)::int AS n FROM card_events WHERE card_id = $1 GROUP BY type`,
+    [cardId]
+  )
+  const stats = { views: 0, clicks: 0, scans: 0 }
+  for (const row of totals) {
+    if (row.type === 'view') stats.views = row.n
+    if (row.type === 'click') stats.clicks = row.n
+    if (row.type === 'scan') stats.scans = row.n
+  }
+
+  /**
+   * Analytics are a Pro feature, so a free account gets the shape of the
+   * response and none of the figures. The cut happens here rather than in the
+   * dashboard: numbers blurred in CSS are still numbers in the payload, one
+   * devtools panel away from being read.
+   *
+   * Events keep being recorded either way — upgrading reveals the history,
+   * it doesn't start collecting it.
+   */
+  const { rows: account } = await query('SELECT plan FROM users WHERE id = $1', [req.userId])
+  if ((account[0]?.plan || 'free') !== 'pro') {
+    return res.json({
+      limited: true,
+      stats: { views: null, clicks: null, scans: null },
+      series: [],
+      topLinks: [],
+    })
+  }
+
+  const { rows: series } = await query(
+    `SELECT to_char(d.day, 'Mon DD') AS day,
+            count(*) FILTER (WHERE e.type = 'view')::int  AS views,
+            count(*) FILTER (WHERE e.type = 'click')::int AS clicks,
+            count(*) FILTER (WHERE e.type = 'scan')::int  AS scans
+       FROM generate_series(current_date - interval '14 days', current_date, interval '1 day') AS d(day)
+       LEFT JOIN card_events e
+         ON e.card_id = $1 AND date_trunc('day', e.created_at) = d.day
+      GROUP BY d.day
+      ORDER BY d.day`,
+    [cardId]
+  )
+
+  const { rows: topLinks } = await query(
+    `SELECT l.id, l.platform, l.url, count(e.id)::int AS clicks
+       FROM card_links l
+       LEFT JOIN card_events e ON e.link_id = l.id AND e.type = 'click'
+      WHERE l.card_id = $1
+      GROUP BY l.id
+      ORDER BY clicks DESC, l.position`,
+    [cardId]
+  )
+
+  res.json({ stats, series, topLinks })
+}))
+
+/* ----------------------------------------------------------------- errors */
+
+app.use((error, _req, res, _next) => {
+  console.error(error)
+  res.status(500).json({ error: 'Something went wrong on our side.' })
+})
+
+const server = app.listen(PORT, () => {
+  console.log(`CardFolio API listening on http://localhost:${PORT}`)
+})
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    server.close(() => pool.end().then(() => process.exit(0)))
+  })
+}

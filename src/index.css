@@ -1,0 +1,189 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-navy-50: #f1f5fa;
+  --color-navy-100: #dde7f3;
+  --color-navy-200: #bccfe6;
+  --color-navy-300: #8faed3;
+  --color-navy-400: #5b85bb;
+  --color-navy-500: #3a63a0;
+  --color-navy-600: #2a4b80;
+  --color-navy-700: #1d3762;
+  --color-navy-800: #142c4f;
+  --color-navy-900: #0f2544;
+  --color-navy-950: #091729;
+
+  --color-accent-50: #eef4ff;
+  --color-accent-100: #dbe6ff;
+  --color-accent-200: #bed2ff;
+  --color-accent-300: #92b4ff;
+  --color-accent-400: #5f8bfa;
+  --color-accent-500: #2e6be6;
+  --color-accent-600: #1f52c9;
+  --color-accent-700: #1a41a2;
+  --color-accent-800: #1b3985;
+  --color-accent-900: #1b336b;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+  --radius-3xl: 8px;
+
+  --shadow-card: 0 1px 2px rgba(15, 37, 68, 0.04), 0 4px 16px rgba(15, 37, 68, 0.06);
+  --shadow-lift: 0 2px 4px rgba(15, 37, 68, 0.04), 0 12px 32px rgba(15, 37, 68, 0.10);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-slate-800);
+    background-color: #ffffff;
+  }
+  /* Tailwind v4's preflight sets buttons to `cursor: default`, unlike v3.
+     Everything clickable in this app should read as clickable, so the hand
+     comes back — except where the control is disabled. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  ::selection {
+    background: var(--color-accent-100);
+  }
+}
+
+@layer utilities {
+  .container-page {
+    width: 100%;
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+  @media (min-width: 1024px) {
+    .container-page {
+      padding-inline: 2rem;
+    }
+  }
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--color-slate-200) 25%,
+      var(--color-slate-100) 37%,
+      var(--color-slate-200) 63%
+    );
+    background-size: 400% 100%;
+    animation: skeleton-wave 1.4s ease infinite;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}
+
+@keyframes skeleton-wave {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.4s ease both; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-toast-in { animation: toast-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+/* ------------------------------------------------------------- dialogs */
+/* The scrim washes in; the panel rises into it and the plan cards follow one
+   after the other, so the eye lands on the offer rather than on a box that
+   was suddenly there. Durations stay short — this sits between a click and
+   what the user came to read. */
+
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes plan-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Without the reduced-motion guard these still need to leave the element
+   visible, so the defaults are the finished state and the animations are
+   layered on below. */
+.animate-scrim-in,
+.animate-dialog-in,
+.animate-plan-in {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-scrim-in { animation: scrim-in 0.2s ease both; }
+  .animate-dialog-in { animation: dialog-in 0.28s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+  .animate-plan-in { animation: plan-in 0.32s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+}
+
+/* ---------------------------------------------------- ambient background */
+/* Slow-drifting blue fields. Deliberately long durations and low opacity —
+   this should read as depth, never as motion competing with the content. */
+
+@keyframes drift-a {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(6%, 4%, 0) scale(1.12); }
+}
+
+@keyframes drift-b {
+  0%   { transform: translate3d(0, 0, 0) scale(1.08); }
+  100% { transform: translate3d(-7%, -5%, 0) scale(1); }
+}
+
+@keyframes drift-c {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0.5; }
+  100% { transform: translate3d(4%, -6%, 0); opacity: 0.85; }
+}
+
+.backdrop-blob-a,
+.backdrop-blob-b,
+.backdrop-blob-c {
+  will-change: transform;
+}
+
+/* Page transition on route change. */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .backdrop-blob-a { animation: drift-a 26s ease-in-out infinite alternate; }
+  .backdrop-blob-b { animation: drift-b 32s ease-in-out infinite alternate; }
+  .backdrop-blob-c { animation: drift-c 22s ease-in-out infinite alternate; }
+  .animate-page-in { animation: page-in 0.34s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+}
