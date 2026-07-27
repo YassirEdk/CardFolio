@@ -67,7 +67,10 @@ export default function PhoneStage({ card }) {
                     <ScanLine size={14} aria-hidden="true" />
                     Scan to open
                   </p>
-                  <p className="mt-1 break-all text-xs text-slate-400">
+                  <p
+                    title={`${SITE_DOMAIN}/${card.username}`}
+                    className="mt-1 max-w-full truncate text-xs text-slate-400"
+                  >
                     {SITE_DOMAIN}/{card.username}
                   </p>
                 </div>

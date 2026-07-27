@@ -59,7 +59,7 @@ export class ApiError extends Error {
  * a relative /api call there just returns the SPA's own HTML, which every
  * caller then reads as "not found".
  */
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 async function request(path, { method = 'GET', body, auth = false } = {}) {
   const headers = {}
@@ -105,7 +105,8 @@ export const api = {
 
   signup: (data) => request('/auth/signup', { method: 'POST', body: data }),
   login: (data) => request('/auth/login', { method: 'POST', body: data }),
-  google: (credential) => request('/auth/google', { method: 'POST', body: { credential } }),
+  /** `mode: 'login'` refuses to create an account for an unknown address. */
+  google: (credential, mode) => request('/auth/google', { method: 'POST', body: { credential, mode } }),
   me: () => request('/auth/me', { auth: true }),
 
   checkUsername: (username) =>
@@ -116,6 +117,9 @@ export const api = {
 
   /** Switches the signed-in account's plan. See the route: no billing yet. */
   setPlan: (plan) => request('/me/plan', { method: 'PUT', body: { plan }, auth: true }).then((r) => r.user),
+
+  /** Permanent: the card, its links and its analytics go with the account. */
+  deleteAccount: () => request('/me', { method: 'DELETE', auth: true }),
 
   getCard: (username) => request(`/cards/${encodeURIComponent(username)}`).then((r) => r.card),
   updateCard: (patch) => request('/me/card', { method: 'PUT', body: patch, auth: true }).then((r) => r.card),

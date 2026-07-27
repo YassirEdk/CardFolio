@@ -16,8 +16,16 @@ export default function CardView({ card, interactive = true }) {
    * the site. `inert` covers pointer, keyboard and assistive tech; scrolling
    * still works because the scroll container lives outside this wrapper.
    */
+  /**
+   * `flex flex-col [&>*]:grow` continues the stretch chain. The frame makes
+   * this wrapper fill the screen, but a template's own `min-h-full` is a
+   * percentage, and a percentage resolves against a parent's *height* — which
+   * here is auto. So a short card (an empty onboarding form, say) stopped at
+   * its content and left the device black showing underneath. Growing the
+   * child is a length, not a percentage, so there is nothing to resolve.
+   */
   return (
-    <div className="select-none" aria-hidden="true" {...{ inert: '' }}>
+    <div className="flex select-none flex-col [&>*]:grow" aria-hidden="true" {...{ inert: '' }}>
       {card_}
     </div>
   )

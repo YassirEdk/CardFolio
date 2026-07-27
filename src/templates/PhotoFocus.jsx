@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MapPin } from 'lucide-react'
+import { ArrowUpRight, MapPin } from 'lucide-react'
 import { ActionRow, PoweredBy, LogoMark, contactItems, socialItems, initials, linkProps } from './shared'
 import { photoSrc } from '../lib/image'
 
@@ -36,7 +36,7 @@ export default function PhotoFocus({ card, onSaveContact, onShare }) {
 
         {/* Light plate: the portrait behind it can be any colour. */}
         <div className="absolute right-5 top-[calc(1.25rem+var(--phone-safe-top,0px))]">
-          <LogoMark card={card} height={38} maxWidth={168} tone="light" />
+          <LogoMark card={card} height={38} maxWidth={168} tone={card.logoPlate === false ? 'plain' : 'light'} />
         </div>
 
         <div className="absolute inset-x-0 bottom-0 p-6 text-white">
@@ -81,15 +81,37 @@ export default function PhotoFocus({ card, onSaveContact, onShare }) {
         {socials.length > 0 && (
           <section className="mt-7" aria-label="Social profiles">
             <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Portfolio & social</h2>
-            <div className="flex flex-wrap gap-2">
+            {/* Tiles rather than chips: this template leads with a full-bleed
+                portrait, so the profiles under it should carry some weight
+                too. Each one takes its platform's colour — the edge, the icon
+                plate — which makes the grid scannable by colour alone. */}
+            <div className="grid grid-cols-2 gap-2.5">
               {socials.map((link) => (
                 <a
                   key={link.id}
                   {...linkProps(link.url)}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-200 px-3.5 py-2.5 text-sm font-semibold text-navy-900 transition-colors hover:bg-slate-50 active:bg-slate-100"
+                  className="group relative overflow-hidden rounded-md border border-slate-200 p-3.5 transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[var(--shadow-card)] active:bg-slate-50"
                 >
-                  <link.icon size={16} style={{ color: link.brand }} aria-hidden="true" />
-                  {link.name}
+                  {/* The platform's colour, painted down the leading edge. */}
+                  <span
+                    className="absolute inset-y-0 left-0 w-1"
+                    style={{ backgroundColor: link.brand }}
+                    aria-hidden="true"
+                  />
+                  <span
+                    className="grid h-9 w-9 place-items-center rounded-md"
+                    style={{ backgroundColor: `${link.brand}1A`, color: link.brand }}
+                    aria-hidden="true"
+                  >
+                    <link.icon size={17} />
+                  </span>
+                  <span className="mt-2.5 block truncate text-sm font-semibold text-navy-900">{link.name}</span>
+                  <span className="block truncate text-xs text-slate-500">{link.handle || 'Open'}</span>
+                  <ArrowUpRight
+                    size={14}
+                    className="absolute right-3 top-3 text-slate-300 transition-colors group-hover:text-slate-500"
+                    aria-hidden="true"
+                  />
                 </a>
               ))}
             </div>

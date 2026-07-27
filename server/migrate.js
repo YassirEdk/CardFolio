@@ -15,6 +15,9 @@ const here = dirname(fileURLToPath(import.meta.url))
 
 const DEMO_PASSWORD = 'demo1234'
 
+// Usernames are the random handles these cards carry in the database. They
+// are the seed's conflict key, so they have to match or a re-run would try to
+// insert a second card for the same user.
 const DEMO = [
   {
     email: 'john@doestudio.com',
@@ -44,7 +47,7 @@ const DEMO = [
   },
   {
     email: 'hello@sarahkim.photo',
-    username: 'sarahkim',
+    username: 'card-ae96b7db',
     fullName: 'Sarah Kim',
     title: 'Wedding & Portrait Photographer',
     bio: 'Natural-light photography across California. Booking 2026 weddings now.',
@@ -65,7 +68,7 @@ const DEMO = [
   },
   {
     email: 'marcus@alvarez.dev',
-    username: 'marcusdev',
+    username: 'card-9900172d',
     fullName: 'Marcus Alvarez',
     title: 'Full-Stack Engineer · React & Node',
     bio: 'Freelance engineer building fast, maintainable web products. Open to contract work.',

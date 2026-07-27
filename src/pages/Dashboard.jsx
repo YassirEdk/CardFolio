@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
+  Check,
   Copy,
   CreditCard,
   Download,
   ExternalLink,
   Eye,
   LayoutTemplate,
+  Loader2,
   Lock,
   LogOut,
   Menu,
@@ -33,6 +35,9 @@ import { Button, Field, Input, Logo, Panel, Badge, Switch, cx } from '../compone
 import PhoneFrame from '../components/PhoneFrame'
 import QrCode from '../components/QrCode'
 import CardView from '../components/CardView'
+import ScaledCard from '../components/ScaledCard'
+import ViewToggle from '../components/ViewToggle'
+import DesktopCard from '../desktop/DesktopCard'
 import UpgradeDialog from '../components/UpgradeDialog'
 import { useToast } from '../components/Toast'
 import {
@@ -196,6 +201,69 @@ function AccountMenu({ card, user, onLogout, avatarFailed, onAvatarError }) {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Shown once, when someone skips the setup wizard.
+ *
+ * The card is already live at that point, so the thing they need to know is
+ * where the rest of it gets filled in. Everything behind is blurred so the one
+ * lit control — Edit — is the only place to go.
+ */
+function SkipNotice({ onClose }) {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    function onKey(event) {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="animate-scrim-in fixed inset-0 z-[90] flex items-center justify-center bg-navy-950/45 p-4 backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="skip-notice-title"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <div className="animate-dialog-in w-full max-w-md rounded-md border border-slate-200 bg-white p-6 text-center shadow-[var(--shadow-lift)]">
+        <span
+          className="mx-auto grid h-12 w-12 place-items-center rounded-md bg-accent-50 text-accent-600"
+          aria-hidden="true"
+        >
+          <Pencil size={22} />
+        </span>
+        <h2 id="skip-notice-title" className="mt-4 text-lg font-bold text-navy-900">
+          Your card is live
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          You skipped the rest of the setup, which is fine — nothing is locked in. Your photo, contact
+          details, links and design all live under <span className="font-semibold text-navy-900">Edit</span>,
+          and every change is published the moment you save it.
+        </p>
+
+        <div className="mt-6 flex flex-col gap-2.5">
+          <Button
+            type="button"
+            size="lg"
+            onClick={() => {
+              onClose()
+              navigate('/dashboard/edit')
+            }}
+          >
+            <Pencil size={16} aria-hidden="true" />
+            Edit my card
+          </Button>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            I’ll do it later
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -538,11 +606,41 @@ function EditCard({ card, setCard, pro }) {
   )
 }
 
+/**
+ * The desktop layout at sidebar size: the real DesktopCard laid out at 1280px
+ * and scaled down, inside a browser-window frame so it reads as "this is the
+ * wide screen" rather than as a squashed card.
+ */
+function DesktopPreview({ card }) {
+  return (
+    <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[var(--shadow-card)]">
+      <div className="flex items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-3 py-2" aria-hidden="true">
+        <span className="h-2 w-2 rounded-md bg-slate-300" />
+        <span className="h-2 w-2 rounded-md bg-slate-300" />
+        <span className="h-2 w-2 rounded-md bg-slate-300" />
+        <span className="ml-2 h-3 flex-1 rounded-md bg-slate-200" />
+      </div>
+      {/* A window shape, not a height that follows the content. The desktop
+          layouts are built on `min-h-dvh`, and inside a scaled preview `dvh`
+          still measures the real browser viewport — so the card comes out
+          taller than what it holds and the surplus shows as empty white.
+          Clipping to a 16:10 window cuts that off, and the fade at the edge
+          reads as "there is more below" rather than as a crop. */}
+      <div className="aspect-[16/10] overflow-hidden [-webkit-mask-image:linear-gradient(180deg,#000_90%,transparent_100%)] [mask-image:linear-gradient(180deg,#000_90%,transparent_100%)]">
+        <ScaledCard designWidth={1280}>
+          <DesktopCard card={card} />
+        </ScaledCard>
+      </div>
+    </div>
+  )
+}
+
 function TemplatesView({ card, setCard, pro }) {
   const toast = useToast()
   // The preview follows the pending pick, so you can see a template before
   // Apply commits it. Accent changes still save on click and arrive via `card`.
   const [pendingTemplate, setPendingTemplate] = useState(card.template)
+  const [view, setView] = useState('phone')
   const previewCard = { ...card, template: pendingTemplate }
 
   return (
@@ -551,8 +649,15 @@ function TemplatesView({ card, setCard, pro }) {
         title="Templates"
         description="Switch design and accent colour. Your link and QR code stay the same."
       />
-      {/* The preview column is sized to the `md` phone plus its bezel. */}
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+      {/* The preview column is sized to what it holds: the `md` phone plus its
+          bezel, or a wider slot for the desktop layout — at 340px a 1280px
+          design scales to a quarter size and stops being readable. */}
+      <div
+        className={cx(
+          'grid gap-8',
+          view === 'desktop' ? 'xl:grid-cols-[minmax(0,1fr)_520px]' : 'xl:grid-cols-[minmax(0,1fr)_340px]'
+        )}
+      >
         <Panel className="p-6 lg:p-7">
           <TemplateSection
             card={card}
@@ -570,14 +675,25 @@ function TemplatesView({ card, setCard, pro }) {
           />
         </Panel>
         <aside>
-          {/* Same top inset as the panel beside it, and the gap under the
-              heading matches that panel's heading-plus-hint block, so the
-              phone starts level with the top of the template tiles. */}
-          <div className="sticky top-24 pt-6 lg:pt-7">
+          {/* The old top inset lined this up with the template tiles, from
+              before the toggle sat between the heading and the preview. With
+              that in the way the column started well below the panel, so it
+              sits at the top of the row now. */}
+          <div className="sticky top-24">
             <h2 className="text-sm font-semibold text-navy-900">Live preview</h2>
-            <PhoneFrame scale="md" className="mx-auto mt-10">
-              <CardView card={previewCard} interactive={false} />
-            </PhoneFrame>
+            {/* Every template ships a phone layout and a desktop one, and a
+                card is seen on both — so both are previewable here. */}
+            <ViewToggle view={view} onChange={setView} className="mt-3" />
+
+            {view === 'phone' ? (
+              <PhoneFrame scale="md" className="mx-auto mt-4">
+                <CardView card={previewCard} interactive={false} />
+              </PhoneFrame>
+            ) : (
+              <div className="mt-4">
+                <DesktopPreview card={previewCard} />
+              </div>
+            )}
           </div>
         </aside>
       </div>
@@ -793,9 +909,65 @@ function Analytics({ card, analytics, pro }) {
   )
 }
 
-function Settings({ card, setCard, onLogout, pro, user, savePrefs }) {
+/** Same rule the server enforces, so the field can say no before asking. */
+const USERNAME_RE = /^[a-z0-9][a-z0-9-]{2,29}$/
+
+/**
+ * Alternatives to offer when a handle is taken: a couple of numbered variants
+ * and a short random suffix, trimmed to the 30-character limit.
+ */
+function suggestFor(base) {
+  const stem = base.slice(0, 24).replace(/-+$/, '')
+  return [`${stem}-1`, `${stem}2`, `${stem}-${Math.random().toString(36).slice(2, 5)}`]
+}
+
+function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount }) {
   const toast = useToast()
+  const navigate = useNavigate()
+  const [deleting, setDeleting] = useState(false)
   const [username, setUsername] = useState(card.username)
+  // 'current' | 'invalid' | 'checking' | 'available' | 'taken'
+  const [urlState, setUrlState] = useState('current')
+  const [suggestions, setSuggestions] = useState([])
+
+  /**
+   * Availability, checked as you type rather than on submit — being told a
+   * handle is taken only after pressing the button is the slow way to find
+   * out. Debounced so a word costs one request, not one per keystroke.
+   */
+  useEffect(() => {
+    if (!pro) return
+    const wanted = username.trim().toLowerCase()
+    setSuggestions([])
+
+    if (wanted === card.username) return setUrlState('current')
+    if (!USERNAME_RE.test(wanted)) return setUrlState('invalid')
+
+    setUrlState('checking')
+    let active = true
+    const timer = setTimeout(async () => {
+      try {
+        const free = await api.checkUsername(wanted)
+        if (!active) return
+        setUrlState(free ? 'available' : 'taken')
+        if (free) return
+
+        // Only offer alternatives that are themselves free.
+        const candidates = await Promise.all(
+          suggestFor(wanted).map(async (candidate) => ((await api.checkUsername(candidate)) ? candidate : null))
+        )
+        if (active) setSuggestions(candidates.filter(Boolean).slice(0, 3))
+      } catch {
+        // The server validates again on save, so a failed probe is not fatal.
+        if (active) setUrlState('current')
+      }
+    }, 350)
+
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [username, card.username, pro])
   const [upgrading, setUpgrading] = useState(false)
   const [email, setEmail] = useState(card.email || '')
   const [passwords, setPasswords] = useState({ current: '', next: '' })
@@ -849,6 +1021,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs }) {
             onSubmit={async (e) => {
               e.preventDefault()
               if (!pro) return setUpgrading(true)
+              if (urlState !== 'available') return
               try {
                 await setCard({ ...card, username })
                 toast('Card URL updated')
@@ -860,10 +1033,15 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs }) {
             <Field label="Username" htmlFor="settings-username" className="flex-1">
               <div
                 className={cx(
-                  'flex h-11 items-center overflow-hidden rounded-md border bg-white focus-within:border-accent-500 focus-within:ring-2 focus-within:ring-accent-500/25',
-                  pro ? 'border-slate-300' : 'border-slate-200 bg-slate-50'
+                  'flex h-11 items-center overflow-hidden rounded-md border bg-white focus-within:ring-2 focus-within:ring-accent-500/25',
+                  !pro && 'border-slate-200 bg-slate-50',
+                  pro && urlState === 'available' && 'border-emerald-400',
+                  pro && (urlState === 'taken' || urlState === 'invalid') && 'border-red-400',
+                  pro && !['available', 'taken', 'invalid'].includes(urlState) && 'border-slate-300'
                 )}
               >
+                {/* The origin is fixed; only the handle after the slash is
+                    yours to set. On localhost that reads "localhost:5173/". */}
                 <span className="select-none border-r border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500">
                   {SITE_DOMAIN}/
                 </span>
@@ -877,10 +1055,22 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs }) {
                     pro ? 'text-navy-900' : 'cursor-not-allowed text-slate-500'
                   )}
                 />
+                {pro && (
+                  <span className="pr-3" aria-hidden="true">
+                    {urlState === 'checking' && <Loader2 size={16} className="animate-spin text-slate-400" />}
+                    {urlState === 'available' && <Check size={16} className="text-emerald-600" strokeWidth={3} />}
+                    {(urlState === 'taken' || urlState === 'invalid') && <X size={16} className="text-red-500" />}
+                  </span>
+                )}
               </div>
             </Field>
             {pro ? (
-              <Button type="submit" variant="secondary" className="sm:mb-0">
+              <Button
+                type="submit"
+                variant="secondary"
+                className="sm:mb-0"
+                disabled={urlState !== 'available'}
+              >
                 Update URL
               </Button>
             ) : (
@@ -890,6 +1080,40 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs }) {
               </Button>
             )}
           </form>
+
+          {pro && (
+            <div className="mt-2 min-h-5 text-xs font-medium" role="status">
+              {urlState === 'checking' && <span className="text-slate-500">Checking availability…</span>}
+              {urlState === 'available' && (
+                <span className="text-emerald-600">
+                  {SITE_DOMAIN}/{username} is free
+                </span>
+              )}
+              {urlState === 'invalid' && (
+                <span className="text-red-600">3–30 characters: lowercase letters, numbers or hyphens</span>
+              )}
+              {urlState === 'taken' && (
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-red-600">
+                  That link is already taken.
+                  {suggestions.length > 0 && (
+                    <span className="flex flex-wrap items-center gap-1.5 text-slate-500">
+                      Try
+                      {suggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => setUsername(suggestion)}
+                          className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-navy-900 transition-colors hover:border-slate-300 hover:bg-white"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
 
           {upgrading && (
             <UpgradeDialog
@@ -1009,10 +1233,20 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs }) {
           </p>
           <form
             className="space-y-4"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault()
-              toast('Account deletion is disabled in this demo', 'info')
-              setConfirmDelete('')
+              if (confirmDelete !== 'DELETE' || deleting) return
+              setDeleting(true)
+              try {
+                await deleteAccount()
+                toast('Your account has been deleted')
+                // The session is already cleared; leave the dashboard before a
+                // render can ask for a card that no longer exists.
+                navigate('/', { replace: true })
+              } catch (error) {
+                toast(error.message || 'Could not delete your account', 'info')
+                setDeleting(false)
+              }
             }}
           >
             <Field label="Type DELETE to confirm" htmlFor="confirm-delete">
@@ -1023,7 +1257,12 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs }) {
                 placeholder="DELETE"
               />
             </Field>
-            <Button type="submit" variant="danger" disabled={confirmDelete !== 'DELETE'}>
+            <Button
+              type="submit"
+              variant="danger"
+              loading={deleting}
+              disabled={confirmDelete !== 'DELETE'}
+            >
               Delete my account
             </Button>
             <Button type="button" variant="secondary" onClick={onLogout} className="ml-2">
@@ -1041,11 +1280,22 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs }) {
 const EMPTY_ANALYTICS = { stats: { views: 0, clicks: 0, scans: 0 }, series: [], topLinks: [] }
 
 export default function Dashboard() {
-  const { user, card, status, saveCard, logout, savePrefs } = useAuth()
+  const { user, card, status, saveCard, logout, savePrefs, deleteAccount } = useAuth()
   const [navOpen, setNavOpen] = useState(false)
   const [analytics, setAnalytics] = useState(EMPTY_ANALYTICS)
   const [avatarFailed, setAvatarFailed] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
+
+  /**
+   * Set by the wizard's Skip button. Held in state and cleared from history
+   * straight away, so a refresh or a Back doesn't show it a second time.
+   */
+  const [showSkipNotice, setShowSkipNotice] = useState(Boolean(location.state?.skipped))
+
+  useEffect(() => {
+    if (location.state?.skipped) navigate(location.pathname, { replace: true, state: null })
+  }, [location.state, location.pathname, navigate])
 
   // Only an explicit 'pro' counts: an unknown or missing plan is free.
   const pro = user?.plan === 'pro'
@@ -1078,6 +1328,15 @@ export default function Dashboard() {
 
   if (status === 'anonymous' || !card) {
     return <Navigate to="/login" replace />
+  }
+
+  /**
+   * The dashboard is for a card that exists publicly. An unpublished one means
+   * the wizard was never finished, so there is nothing here to manage yet —
+   * back to onboarding, however the user arrived, typed URL included.
+   */
+  if (!card.published) {
+    return <Navigate to="/onboarding" replace />
   }
 
   const setCard = (next) => saveCard(next)
@@ -1137,7 +1396,7 @@ export default function Dashboard() {
           {sidebar}
           <div className="mt-6 rounded-md border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-bold text-navy-900">Your link</p>
-            <p className="mt-1 break-all text-xs text-slate-500">
+            <p title={`${SITE_DOMAIN}/${card.username}`} className="mt-1 truncate text-xs text-slate-500">
               {SITE_DOMAIN}/{card.username}
             </p>
           </div>
@@ -1162,11 +1421,14 @@ export default function Dashboard() {
                   pro={pro}
                   user={user}
                   savePrefs={savePrefs}
+                  deleteAccount={deleteAccount}
                 />
               } />
           </Routes>
         </main>
       </div>
+
+      {showSkipNotice && <SkipNotice onClose={() => setShowSkipNotice(false)} />}
     </div>
   )
 }

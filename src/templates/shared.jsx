@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Mail, Phone, MessageCircle, Globe, MapPin, Download, Share2, User } from 'lucide-react'
 import { getPlatform } from '../data/platforms'
 import { photoSrc } from '../lib/image'
+import { telHref, sameNumber } from '../lib/phone'
 import { textOn } from '../lib/color'
 import { cx } from '../components/ui'
 
@@ -14,8 +15,18 @@ import { cx } from '../components/ui'
 
 export function contactItems(card) {
   const items = []
-  if (card.phone) items.push({ key: 'phone', icon: Phone, label: 'Call', value: card.phone, href: `tel:${card.phone.replace(/\s/g, '')}` })
-  if (card.whatsapp)
+  // One line used for both is one row, not the same number printed twice.
+  const oneNumber = sameNumber(card.phone, card.whatsapp)
+
+  if (card.phone)
+    items.push({
+      key: 'phone',
+      icon: Phone,
+      label: oneNumber ? 'Call & WhatsApp' : 'Call',
+      value: card.phone,
+      href: telHref(card.phone),
+    })
+  if (card.whatsapp && !oneNumber)
     items.push({
       key: 'whatsapp',
       icon: MessageCircle,
@@ -42,8 +53,25 @@ export function socialItems(card) {
     .filter((link) => link.url)
     .map((link) => {
       const platform = getPlatform(link.platform)
-      return { ...link, name: link.label || platform.name, icon: platform.icon, brand: platform.color }
+      return {
+        ...link,
+        name: link.label || platform.name,
+        icon: platform.icon,
+        brand: platform.color,
+        handle: handleFromUrl(link.url),
+      }
     })
+}
+
+/** "https://instagram.com/john.doe" → "@john.doe", or null if there is none. */
+function handleFromUrl(url) {
+  try {
+    const path = new URL(url).pathname.replace(/\/+$/, '').split('/').filter(Boolean).pop()
+    if (!path) return null
+    return path.startsWith('@') ? path : `@${path}`
+  } catch {
+    return null
+  }
 }
 
 export function initials(name = '') {

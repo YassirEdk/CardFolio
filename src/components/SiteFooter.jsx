@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Linkedin, Instagram, Github, Twitter, Youtube } from 'lucide-react'
 import { Logo } from './ui'
+import { DEMO_USERNAME } from '../data/mockData'
 
 const FOOTER_COLUMNS = [
   {
@@ -11,7 +12,7 @@ const FOOTER_COLUMNS = [
       { label: 'How it works', to: '/#how-it-works' },
       { label: 'Templates', to: '/#templates' },
       { label: 'Pricing', to: '/#pricing' },
-      { label: 'Live demo card', to: '/demo' },
+      { label: 'Live demo card', to: `/${DEMO_USERNAME}` },
     ],
   },
   {

@@ -23,7 +23,8 @@ export default function Split({ card, onSaveContact, onShare }) {
             <img src={card.cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
             <div
               className="absolute inset-0"
-              style={{ background: `linear-gradient(180deg, ${accent}CC 0%, ${accent}E6 100%)` }}
+              // 0x59 ≈ 35% at the top, 0x99 ≈ 60% behind the text below.
+              style={{ background: `linear-gradient(180deg, ${accent}59 0%, ${accent}99 100%)` }}
               aria-hidden="true"
             />
           </>
@@ -33,7 +34,12 @@ export default function Split({ card, onSaveContact, onShare }) {
           <div className="absolute right-0 top-0">
             {/* Narrower cap than the other templates: the portrait is centred
                 directly below, and a wider plate reaches across into it. */}
-            <LogoMark card={card} height={36} maxWidth={140} tone={card.cover ? 'light' : 'dark'} />
+            <LogoMark
+              card={card}
+              height={36}
+              maxWidth={140}
+              tone={card.logoPlate === false ? 'plain' : card.cover ? 'light' : 'dark'}
+            />
           </div>
           <div className="flex justify-center">
             <Avatar card={card} size={88} accent="#ffffff33" className="border-4 border-white/25" />

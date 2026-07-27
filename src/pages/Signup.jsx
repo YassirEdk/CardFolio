@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import AuthLayout, { Divider } from '../components/AuthLayout'
 import GoogleSignIn from '../components/GoogleSignIn'
@@ -20,7 +20,7 @@ function passwordStrength(password) {
 export default function Signup() {
   const navigate = useNavigate()
   const toast = useToast()
-  const { signup, loginWithGoogle } = useAuth()
+  const { signup, loginWithGoogle, status, card } = useAuth()
   const [values, setValues] = useState({ fullName: '', email: '', password: '' })
   const [errors, setErrors] = useState({})
   const [showPassword, setShowPassword] = useState(false)
@@ -31,6 +31,16 @@ export default function Signup() {
   const setField = (name) => (event) => {
     setValues((current) => ({ ...current, [name]: event.target.value }))
     setErrors((current) => ({ ...current, [name]: undefined }))
+  }
+
+  /**
+   * Already signed in? This page has nothing to offer — going Back to it after
+   * signing up used to show the form again, as if the account hadn't been
+   * created. Where to send them depends on how far they got: an unpublished
+   * card means onboarding was never finished.
+   */
+  if (status === 'authenticated') {
+    return <Navigate to={card?.published ? '/dashboard' : '/onboarding'} replace />
   }
 
   async function handleSubmit(event) {

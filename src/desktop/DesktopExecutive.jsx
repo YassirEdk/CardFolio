@@ -55,7 +55,11 @@ export default function DesktopExecutive({ card }) {
         <div className="container-page relative py-16">
           {card.logo && (
             <div className="mx-auto mb-10 flex max-w-6xl justify-end">
-              <DesktopLogo card={card} height={40} tone={card.cover ? 'light' : 'dark'} />
+              <DesktopLogo
+                card={card}
+                height={40}
+                tone={card.logoPlate === false ? 'plain' : card.cover ? 'light' : 'dark'}
+              />
             </div>
           )}
           <div className="mx-auto flex max-w-6xl items-center gap-12">

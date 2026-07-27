@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { Mail, Phone, MessageCircle, Globe, User, ScanLine, Copy, Check, Download } from 'lucide-react'
 import { getPlatform } from '../data/platforms'
 import { photoSrc } from '../lib/image'
+import { telHref, sameNumber } from '../lib/phone'
 import { readableOn, textOn } from '../lib/color'
-import { cx } from '../components/ui'
+import { cx, ScanCorners } from '../components/ui'
 import QrCode from '../components/QrCode'
-import { SITE_DOMAIN } from '../data/mockData'
 import { useToast } from '../components/Toast'
 
 /**
@@ -19,17 +19,21 @@ import { useToast } from '../components/Toast'
 /** Contact methods, desktop wording (full labels rather than button verbs). */
 export function desktopContacts(card) {
   const items = []
+  // One line used for both is one row, not the same number printed twice.
+  const oneNumber = sameNumber(card.phone, card.whatsapp)
+
   if (card.email)
     items.push({ key: 'email', icon: Mail, label: 'Email', value: card.email, href: `mailto:${card.email}` })
   if (card.phone)
     items.push({
       key: 'phone',
       icon: Phone,
-      label: 'Phone',
+      label: oneNumber ? 'Phone & WhatsApp' : 'Phone',
       value: card.phone,
-      href: `tel:${card.phone.replace(/\s/g, '')}`,
+      // Digits and a leading + only: the display value carries a dash.
+      href: telHref(card.phone),
     })
-  if (card.whatsapp)
+  if (card.whatsapp && !oneNumber)
     items.push({
       key: 'whatsapp',
       icon: MessageCircle,
@@ -227,16 +231,20 @@ export function QrPanel({ card, publicUrl, accent, tone = 'light', className }) 
       <p className={cx('mt-1.5 text-xs leading-relaxed', dark ? 'text-slate-400' : 'text-slate-500')}>
         Scan this code to carry the card with you.
       </p>
+      {/* Scanner brackets instead of the printed URL: the address was long
+          enough on some domains to wrap badly, and it said nothing the code
+          doesn't already carry. The corners frame the code the way a camera
+          viewfinder does, so it reads as "point your phone here". */}
       <div className="mt-5 flex justify-center">
-        <div className={cx('rounded-md bg-white p-3', dark ? 'border border-white/10' : 'border border-slate-200')}>
-          {/* The code sits on white and has to survive a phone camera, so the
-              modules are darkened when the accent is too pale to scan. */}
-          <QrCode value={publicUrl} size={168} color={readableOn(accent, '#ffffff', 4.5)} />
+        <div className="relative p-2.5">
+          <ScanCorners dark={dark} accent={accent} />
+          <div className={cx('rounded-md bg-white p-3', dark ? 'border border-white/10' : 'border border-slate-200')}>
+            {/* The code sits on white and has to survive a phone camera, so the
+                modules are darkened when the accent is too pale to scan. */}
+            <QrCode value={publicUrl} size={168} color={readableOn(accent, '#ffffff', 4.5)} />
+          </div>
         </div>
       </div>
-      <p className={cx('mt-4 break-all text-xs font-medium', dark ? 'text-slate-400' : 'text-slate-500')}>
-        {SITE_DOMAIN}/{card.username}
-      </p>
       <button
         type="button"
         onClick={copyLink}

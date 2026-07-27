@@ -60,6 +60,7 @@ export function toCard(row, links = []) {
     published: row.published,
     // Pro preferences; the defaults match the columns.
     hideBranding: row.hide_branding ?? false,
+    logoPlate: row.logo_plate ?? true,
     indexable: row.indexable ?? true,
     links: links.map((link) => ({
       id: link.id,

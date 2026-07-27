@@ -49,7 +49,10 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (credentials) => adopt(await api.login(credentials)), [adopt])
   const signup = useCallback(async (data) => adopt(await api.signup(data)), [adopt])
-  const loginWithGoogle = useCallback(async (credential) => adopt(await api.google(credential)), [adopt])
+  const loginWithGoogle = useCallback(
+    async (credential, mode) => adopt(await api.google(credential, mode)),
+    [adopt]
+  )
 
   const logout = useCallback(() => {
     setToken(null)
@@ -62,6 +65,15 @@ export function AuthProvider({ children }) {
     const updated = await api.updateCard(patch)
     setCard(updated)
     return updated
+  }, [])
+
+  /** Deletes the account, then clears the session exactly as logout does. */
+  const deleteAccount = useCallback(async () => {
+    await api.deleteAccount()
+    setToken(null)
+    setUser(null)
+    setCard(null)
+    setStatus('anonymous')
   }, [])
 
   /** Account preferences come back as a fresh user, same as a plan change. */
@@ -79,8 +91,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, card, status, login, signup, loginWithGoogle, logout, saveCard, setCard, setPlan, savePrefs }),
-    [user, card, status, login, signup, loginWithGoogle, logout, saveCard, setPlan, savePrefs]
+    () => ({ user, card, status, login, signup, loginWithGoogle, logout, saveCard, setCard, setPlan, savePrefs, deleteAccount }),
+    [user, card, status, login, signup, loginWithGoogle, logout, saveCard, setPlan, savePrefs, deleteAccount]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

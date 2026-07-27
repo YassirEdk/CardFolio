@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { TEMPLATES } from '../templates'
+import { DEMO_USERNAME } from '../data/mockData'
 import { api } from '../lib/api'
 import CardView from '../components/CardView'
 import DesktopCard from '../desktop/DesktopCard'
@@ -121,13 +122,15 @@ export default function PublicCard() {
   }
 
   const card = override ? { ...state.card, template: override } : state.card
+  const isDemo = String(username).toLowerCase() === DEMO_USERNAME
 
   return (
     <div className="min-h-dvh bg-slate-100">
-      {/* The screen decides the default; the toggle lets a visitor override it.
-          It only appears on a wide screen — on a phone there is no room for the
-          desktop layout, so there would be nothing to switch to. */}
-      {wide && (
+      {/* The toggle is a showcase control, so it rides on the demo card only:
+          a real card should look like a card, not like a preview with chrome
+          on it. It also needs a wide screen — on a phone there is no room for
+          the desktop layout, so there would be nothing to switch to. */}
+      {wide && isDemo && (
         <ViewToggle
           view={view}
           onChange={setView}
@@ -135,7 +138,7 @@ export default function PublicCard() {
         />
       )}
 
-      {wide && view === 'desktop' ? (
+      {wide && (!isDemo || view === 'desktop') ? (
         <DesktopCard card={card} />
       ) : wide ? (
         // The phone layout on a big screen, shown in the device it was drawn

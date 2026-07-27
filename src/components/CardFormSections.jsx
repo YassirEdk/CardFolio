@@ -13,12 +13,14 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { Button, Field, Input, Textarea, Select, cx } from './ui'
+import { Button, Checkbox, Field, Input, Textarea, Select, cx } from './ui'
 import { PLATFORM_OPTIONS, getPlatform, basePrefix, toHandle, toUrl, ACCENT_COLORS } from '../data/platforms'
 import { TEMPLATES, getTemplate, templateHasBanner, templateIsPro } from '../templates'
 import CardView from './CardView'
 import ScaledCard from './ScaledCard'
 import { downscaleDataUrl } from '../lib/image'
+import { splitPhone, joinPhone, formatNational } from '../lib/phone'
+import DialCodeSelect from './DialCodeSelect'
 import ImageCropper from './ImageCropper'
 import UpgradeDialog from './UpgradeDialog'
 
@@ -45,11 +47,26 @@ function ImageUpload({
   // Holds the raw file while the crop dialog is open; null when closed.
   const [cropping, setCropping] = useState(null)
 
+  /**
+   * The image as uploaded, kept so Crop reopens on the whole picture rather
+   * than on the last crop of it — otherwise each visit crops the crop, and the
+   * parts you framed out are gone for good.
+   *
+   * It lives in memory only: the card stores the cropped result, so after a
+   * reload Crop falls back to that. Keeping originals across sessions means
+   * storing a second copy of every image on the server.
+   */
+  const originalRef = useRef(null)
+  const transformRef = useRef(null)
+
   function handleFile(event) {
     const file = event.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
     reader.onload = async () => {
+      originalRef.current = reader.result
+      // A new file starts from the middle, not from the last file's framing.
+      transformRef.current = null
       // Cropped images are encoded on apply. Uncropped ones (the logo) would
       // otherwise be stored exactly as they came off disk — routinely a
       // multi-megabyte PNG in a text column — so they get downscaled here.
@@ -91,7 +108,12 @@ function ImageUpload({
               {value ? 'Replace' : 'Upload'}
             </Button>
             {value && cropAspect && (
-              <Button type="button" variant="secondary" size="sm" onClick={() => setCropping(value)}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setCropping(originalRef.current || value)}
+              >
                 <Crop size={15} aria-hidden="true" />
                 Crop
               </Button>
@@ -125,8 +147,12 @@ function ImageUpload({
           outputWidth={cropOutputWidth}
           quality={cropQuality}
           title={`Crop ${label.replace(/ \(optional\)| image/gi, '').toLowerCase()}`}
+          // Only resume the framing when reopening the same original — a
+          // crop of a different image would land somewhere arbitrary.
+          initialTransform={cropping === originalRef.current ? transformRef.current : null}
           onCancel={() => setCropping(null)}
-          onApply={(cropped) => {
+          onApply={(cropped, transform) => {
+            transformRef.current = transform
             onChange(cropped)
             setCropping(null)
           }}
@@ -208,14 +234,17 @@ export function IdentitySection({ card, update, errors = {} }) {
           cropOutputWidth={1800}
           cropQuality={0.92}
         />
-        <ImageUpload
-          id="logo"
-          label="Logo (optional)"
-          hint="Shown whole, never cropped, on templates that support branding."
-          value={card.logo}
-          onChange={(logo) => update({ logo })}
-          fit="contain"
-        />
+        <div>
+          <ImageUpload
+            id="logo"
+            label="Logo (optional)"
+            hint="Shown whole, never cropped, on templates that support branding."
+            value={card.logo}
+            onChange={(logo) => update({ logo })}
+            fit="contain"
+          />
+
+        </div>
       </div>
 
       {/* Minimal and Photo-focus have nowhere to put a banner, so offering one
@@ -247,20 +276,98 @@ export function IdentitySection({ card, update, errors = {} }) {
 
 /* ---------------------------------------------------------- step: contact */
 
+/**
+ * A dial-code picker beside the national number, stored as one string
+ * ("+1 415-5550134"). A native <select> rather than a custom listbox: it
+ * scrolls, filters by typing and behaves like the platform expects, on a phone
+ * as well as a desktop.
+ */
+function PhoneField({ id, label, hint, error, value, onChange, autoComplete, disabled = false, required = false }) {
+  const parsed = splitPhone(value)
+
+  /**
+   * The chosen country is held here as well as in the value, because an empty
+   * number has nowhere to keep it: `joinPhone` returns '' when there are no
+   * digits, and that parses back to the default code — so picking a country
+   * before typing appeared to do nothing at all.
+   *
+   * The stored value stays empty until there are digits; this only decides
+   * what the button shows.
+   */
+  const [dial, setDial] = useState(parsed.dial)
+
+  // Follow the card when it carries a code of its own (loaded, or edited
+  // elsewhere). A value without digits can't, so the local choice stands.
+  useEffect(() => {
+    if (parsed.national) setDial(parsed.dial)
+  }, [parsed.dial, parsed.national])
+
+  const national = parsed.national
+
+  return (
+    <Field label={label} htmlFor={id} error={error} hint={hint} required={required}>
+      {/* min-w-0 on the input wrapper: a flex item defaults to its intrinsic
+          minimum, which for a text input is wide enough to push the row over
+          and squeeze the field. */}
+      <div className="flex gap-2">
+        <DialCodeSelect
+          disabled={disabled}
+          value={dial}
+          onChange={(next) => {
+            setDial(next)
+            // Only rewrite the card when there is a number to rewrite.
+            if (national) onChange(joinPhone(next, national))
+          }}
+        />
+        <div className="min-w-0 flex-1">
+          <Input
+            id={id}
+            type="tel"
+            value={formatNational(national)}
+            onChange={(e) => onChange(joinPhone(dial, e.target.value))}
+            placeholder="415-5550134"
+            autoComplete={autoComplete}
+            disabled={disabled}
+            invalid={Boolean(error)}
+          />
+        </div>
+      </div>
+    </Field>
+  )
+}
+
 export function ContactSection({ card, update, errors = {} }) {
+  /**
+   * Most people use one number for both, so WhatsApp follows the phone field
+   * until this is ticked. Seeded from the card: a saved WhatsApp number that
+   * differs from the phone means the box was ticked when it was saved.
+   */
+  const [separateWhatsapp, setSeparateWhatsapp] = useState(
+    () => Boolean(card.whatsapp) && card.whatsapp !== card.phone
+  )
+
+  function setPhone(phone) {
+    // While the numbers are linked, one edit writes both.
+    update(separateWhatsapp ? { phone } : { phone, whatsapp: phone })
+  }
+
+  function toggleSeparate(on) {
+    setSeparateWhatsapp(on)
+    // Unticking re-links: whatever WhatsApp held is replaced by the phone.
+    if (!on) update({ whatsapp: card.phone })
+  }
+
   return (
     <div className="grid gap-6 sm:grid-cols-2">
-      <Field label="Phone number" htmlFor="phone" error={errors.phone}>
-        <Input
-          id="phone"
-          type="tel"
-          value={card.phone}
-          onChange={(e) => update({ phone: e.target.value })}
-          placeholder="+1 415 555 0134"
-          autoComplete="tel"
-          invalid={Boolean(errors.phone)}
-        />
-      </Field>
+      <PhoneField
+        id="phone"
+        label="Phone number"
+        error={errors.phone}
+        value={card.phone}
+        onChange={setPhone}
+        autoComplete="tel"
+        required
+      />
 
       <Field label="Email address" htmlFor="cardEmail" error={errors.email} required>
         <Input
@@ -274,15 +381,33 @@ export function ContactSection({ card, update, errors = {} }) {
         />
       </Field>
 
-      <Field label="WhatsApp number" htmlFor="whatsapp" hint="Optional">
-        <Input
-          id="whatsapp"
-          type="tel"
-          value={card.whatsapp}
-          onChange={(e) => update({ whatsapp: e.target.value })}
-          placeholder="+14155550134"
+      {/* The checkbox belongs to the phone row above, so it spans the grid and
+          sits tight under it — pulled up out of the row gap. The field it
+          reveals is a normal grid cell, which keeps the columns paired
+          (WhatsApp beside Location) instead of leaving a hole. */}
+      <div className="-mt-2 sm:col-span-2">
+        <Checkbox
+          id="separate-whatsapp"
+          checked={separateWhatsapp}
+          onChange={toggleSeparate}
+          label="I use a different number for WhatsApp"
+          hint={
+            separateWhatsapp
+              ? 'Shown as the WhatsApp button on your card.'
+              : 'WhatsApp uses the phone number above.'
+          }
         />
-      </Field>
+      </div>
+
+      {/* Always visible, so the card's WhatsApp number is never a mystery —
+          but locked to the phone number until the box above is ticked. */}
+      <PhoneField
+        id="whatsapp"
+        label="WhatsApp number"
+        value={card.whatsapp}
+        onChange={(whatsapp) => update({ whatsapp })}
+        disabled={!separateWhatsapp}
+      />
 
       <Field label="City & country" htmlFor="location" hint="Optional">
         <Input
@@ -294,7 +419,13 @@ export function ContactSection({ card, update, errors = {} }) {
         />
       </Field>
 
-      <Field label="Website" htmlFor="website" error={errors.website} hint="Optional" className="sm:col-span-2">
+      <Field
+        label="Website"
+        htmlFor="website"
+        error={errors.website}
+        hint="Optional"
+        className="sm:col-span-2"
+      >
         <Input
           id="website"
           type="url"
@@ -316,9 +447,22 @@ let linkId = 100
 /** How many links a free card may carry. Pro is unlimited. */
 export const FREE_LINK_LIMIT = 4
 
+/** The row shown when a card has no links yet — a real row, not a prompt. */
+const BLANK_LINK = { id: 'blank', platform: 'instagram', url: '' }
+
 export function LinksSection({ card, update, pro = true }) {
   const links = card.links || []
   const [upgrading, setUpgrading] = useState(false)
+
+  /**
+   * An empty card still shows one editable row. The old empty state made you
+   * click "Add your first link" before you could type anything — a step that
+   * only ever had one answer.
+   *
+   * The blank row is display-only until it is touched: nothing is written to
+   * the card, so the form isn't dirty and no empty link gets saved.
+   */
+  const rows = links.length ? links : [BLANK_LINK]
 
   // Existing links are never taken away — a card that came down from Pro keeps
   // what it has, it just can't grow until the plan does.
@@ -330,10 +474,15 @@ export function LinksSection({ card, update, pro = true }) {
   }
 
   function patchLink(id, patch) {
+    // Editing the blank row is what creates the first real link.
+    if (id === BLANK_LINK.id) {
+      return update({ links: [{ ...BLANK_LINK, ...patch, id: `n${++linkId}` }] })
+    }
     update({ links: links.map((link) => (link.id === id ? { ...link, ...patch } : link)) })
   }
 
   function removeLink(id) {
+    if (id === BLANK_LINK.id) return
     update({ links: links.filter((link) => link.id !== id) })
   }
 
@@ -347,21 +496,8 @@ export function LinksSection({ card, update, pro = true }) {
 
   return (
     <div className="space-y-4">
-      {links.length === 0 && (
-        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
-          <p className="text-sm font-semibold text-navy-900">No links yet</p>
-          <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-            Add the profiles you want people to reach — Instagram, LinkedIn, Fiverr, your portfolio, anything.
-          </p>
-          <Button type="button" variant="secondary" size="sm" className="mt-4" onClick={addLink}>
-            <Plus size={15} aria-hidden="true" />
-            Add your first link
-          </Button>
-        </div>
-      )}
-
       <ul className="space-y-3">
-        {links.map((link, index) => {
+        {rows.map((link, index) => {
           const platform = getPlatform(link.platform)
           return (
             <li
@@ -466,7 +602,7 @@ export function LinksSection({ card, update, pro = true }) {
                   <button
                     type="button"
                     onClick={() => move(index, 1)}
-                    disabled={index === links.length - 1}
+                    disabled={index === rows.length - 1}
                     aria-label={`Move ${platform.name} link down`}
                     className="grid h-9 w-9 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-navy-900 disabled:opacity-35 disabled:hover:bg-transparent"
                   >
@@ -487,32 +623,31 @@ export function LinksSection({ card, update, pro = true }) {
         })}
       </ul>
 
-      {links.length > 0 &&
-        (atLimit ? (
-          // At the cap the button stops being an add button: it says what the
-          // limit is and offers the way past it.
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" onClick={() => setUpgrading(true)}>
-              <Sparkles size={15} aria-hidden="true" />
-              Go Pro to add more links
-            </Button>
+      {atLimit ? (
+        // At the cap the button stops being an add button: it says what the
+        // limit is and offers the way past it.
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" onClick={() => setUpgrading(true)}>
+            <Sparkles size={15} aria-hidden="true" />
+            Go Pro to add more links
+          </Button>
+          <p className="text-sm text-slate-500">
+            Free cards carry {FREE_LINK_LIMIT} links. Pro removes the limit.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="secondary" onClick={addLink}>
+            <Plus size={15} aria-hidden="true" />
+            {links.length ? 'Add another link' : 'Add a second link'}
+          </Button>
+          {!pro && (
             <p className="text-sm text-slate-500">
-              Free cards carry {FREE_LINK_LIMIT} links. Pro removes the limit.
+              {links.length} of {FREE_LINK_LIMIT} links used
             </p>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="secondary" onClick={addLink}>
-              <Plus size={15} aria-hidden="true" />
-              Add another link
-            </Button>
-            {!pro && (
-              <p className="text-sm text-slate-500">
-                {links.length} of {FREE_LINK_LIMIT} links used
-              </p>
-            )}
-          </div>
-        ))}
+          )}
+        </div>
+      )}
 
       {upgrading && (
         <UpgradeDialog
@@ -693,6 +828,26 @@ export function TemplateSection({ card, update, confirm = false, onPendingChange
         </div>
       </div>
 
+      {/* Only Photo-focus, Dark Pro and Split put the logo over artwork, so
+          the plate is the only thing keeping a dark logo legible there — and
+          the only thing in the way of one drawn for dark surfaces. It lives
+          here with the other design settings, and appears once there is a
+          logo for it to sit behind. */}
+      {card.logo && (
+        <div>
+          <h3 className="text-sm font-semibold text-navy-900">Logo</h3>
+          <div className="mt-4">
+            <Checkbox
+              id="logo-plate"
+              checked={card.logoPlate !== false}
+              onChange={(logoPlate) => update({ logoPlate })}
+              label="Add a plate behind my logo"
+              hint="Turn this off if your logo already works on a dark background."
+            />
+          </div>
+        </div>
+      )}
+
       {/* Foot of the panel: the pick above is only a pick until Apply. */}
       {confirm && (
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-5">
@@ -760,6 +915,12 @@ export function validateCard(card, step) {
     if ((card.bio || '').length > BIO_LIMIT) errors.bio = `Keep your bio under ${BIO_LIMIT} characters.`
   }
   if (step === 'contact' || step === 'all') {
+    // Digits only: the field stores a formatted string, and a country code on
+    // its own ("+212") is not a number anyone can call.
+    const phoneDigits = String(card.phone ?? '').replace(/\D/g, '')
+    if (!phoneDigits) errors.phone = 'A phone number is required.'
+    else if (phoneDigits.length < 6) errors.phone = 'That number looks too short.'
+
     if (!card.email?.trim()) errors.email = 'An email address is required.'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(card.email)) errors.email = 'Enter a valid email address.'
     if (card.website && !/^https?:\/\/.+\..+/.test(card.website))

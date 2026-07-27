@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Copy, Download, PartyPopper, Rocket } from 'lucide-react'
 import { Button, Logo, Panel, cx } from '../components/ui'
 import PhoneFrame from '../components/PhoneFrame'
@@ -24,6 +24,8 @@ const STEPS = [
   { id: 'template', label: 'Template', title: 'Pick your design', subtitle: 'Choose a template and an accent colour. You can change both later.' },
   { id: 'publish', label: 'Publish', title: 'Ready to go live', subtitle: 'Here is your card, your link and your QR code.' },
 ]
+
+const STEP_KEY = 'cardfolio.onboarding.step'
 
 function ProgressBar({ index }) {
   const percent = ((index + 1) / STEPS.length) * 100
@@ -159,10 +161,23 @@ export default function Onboarding() {
   const navigate = useNavigate()
   const toast = useToast()
   const { user, card: authCard, saveCard, status } = useAuth()
-  const [index, setIndex] = useState(0)
+  /**
+   * The step survives a refresh too. Session storage, not local: it belongs to
+   * this sitting, and a user coming back next week should start at the top
+   * rather than on step four of a form they don't remember.
+   */
+  const [index, setIndex] = useState(() => {
+    try {
+      const saved = Number(sessionStorage.getItem(STEP_KEY))
+      return Number.isInteger(saved) ? Math.min(Math.max(saved, 0), STEPS.length - 1) : 0
+    } catch {
+      return 0
+    }
+  })
   const [card, setCard] = useState({ ...EMPTY_CARD, ...(authCard || {}) })
   const [errors, setErrors] = useState({})
   const [publishing, setPublishing] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [adopted, setAdopted] = useState(Boolean(authCard))
 
   // The session resolves after mount, so fold the real card in once — and only
@@ -172,6 +187,14 @@ export default function Onboarding() {
     setCard((current) => ({ ...EMPTY_CARD, ...authCard, ...(current.fullName ? current : {}) }))
     setAdopted(true)
   }, [authCard, adopted])
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STEP_KEY, String(index))
+    } catch {
+      /* private mode — the step simply won't persist */
+    }
+  }, [index])
 
   const step = STEPS[index]
   const publicUrl = useMemo(
@@ -188,10 +211,30 @@ export default function Onboarding() {
     })
   }
 
-  function goNext() {
+  /**
+   * Continue saves the step before advancing, so a refresh (or a closed tab)
+   * resumes from the server copy instead of an empty form. The card row already
+   * exists — signup creates it — so this is an update, and `published` stays
+   * false until the last step.
+   */
+  async function goNext() {
     const stepErrors = validateCard(card, step.id)
     setErrors(stepErrors)
     if (Object.keys(stepErrors).length > 0) return
+
+    setSaving(true)
+    try {
+      const saved = await saveCard(card)
+      // Adopt the server's copy: it fills in ids for new links and normalises
+      // empty fields, so the next step edits what is actually stored.
+      if (saved) setCard(saved)
+    } catch (error) {
+      toast(error.message || 'Could not save this step', 'info')
+      return
+    } finally {
+      setSaving(false)
+    }
+
     setIndex((value) => Math.min(value + 1, STEPS.length - 1))
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -201,10 +244,41 @@ export default function Onboarding() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  /**
+   * Skip the rest of the wizard.
+   *
+   * It publishes as well as saves: an unpublished card is sent back here from
+   * everywhere, so skipping without publishing would be a door that opens onto
+   * the same room. Whatever has been filled in goes live, and the dashboard is
+   * where the rest gets finished.
+   */
+  async function skipSetup() {
+    setSaving(true)
+    try {
+      await saveCard({ ...card, published: true })
+      try {
+        sessionStorage.removeItem(STEP_KEY)
+      } catch {
+        /* nothing to clean up */
+      }
+      // The dashboard reads this and explains where the rest gets filled in.
+      navigate('/dashboard', { state: { skipped: true } })
+    } catch (error) {
+      toast(error.message || 'Could not skip setup', 'info')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function publish() {
     setPublishing(true)
     try {
       await saveCard({ ...card, published: true })
+      try {
+        sessionStorage.removeItem(STEP_KEY)
+      } catch {
+        /* nothing to clean up */
+      }
       toast('Your card is live 🎉')
       navigate('/dashboard')
     } catch (error) {
@@ -222,9 +296,13 @@ export default function Onboarding() {
         <div className="container-page flex h-16 items-center justify-between">
           <Logo size="sm" />
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-slate-500 sm:block">Setting up your card</span>
-            <Button as={Link} to="/dashboard" variant="ghost" size="sm">
-              Save & exit
+            {/* Secondary, not ghost: a bordered control reads as something you
+                can press. As a ghost button it looked like the label beside
+                it, which is why it was easy to miss. */}
+            <span className="hidden text-sm text-slate-500 sm:block">Setting up your card or</span>
+            <Button type="button" variant="secondary" size="sm" loading={saving} onClick={skipSetup}>
+              Skip for now
+              <ArrowRight size={15} aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -259,7 +337,12 @@ export default function Onboarding() {
                 {step.id === 'publish' && <PublishStep card={card} publicUrl={publicUrl} />}
               </Panel>
 
-              <div className="mt-6 flex items-center justify-between gap-3">
+              {/* Pinned to the bottom of the viewport: the identity step is
+                  long enough that Back and Continue sat below the fold, so the
+                  way forward was only findable by scrolling past the form. It
+                  sits on a translucent bar so the fields stay readable
+                  underneath as they pass behind it. */}
+              <div className="sticky bottom-0 z-30 mt-6 flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/85 py-4 backdrop-blur-sm">
                 <Button type="button" variant="secondary" size="lg" onClick={goBack} disabled={index === 0}>
                   <ArrowLeft size={16} aria-hidden="true" />
                   Back
@@ -271,7 +354,7 @@ export default function Onboarding() {
                     Publish my card
                   </Button>
                 ) : (
-                  <Button type="submit" size="lg">
+                  <Button type="submit" size="lg" loading={saving}>
                     Continue
                     <ArrowRight size={16} aria-hidden="true" />
                   </Button>

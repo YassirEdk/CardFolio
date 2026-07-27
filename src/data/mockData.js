@@ -35,6 +35,13 @@ export const LOCAL_PHOTO = '/single-women-happier-than-men-675ac891b545d.avif'
 export const DEMO_COVER =
   'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80'
 
+/**
+ * The card behind every "see a live card" link. Free accounts get a random
+ * handle, and these demo accounts are no exception — so the link is read from
+ * the data rather than hardcoded as "/demo" in four different files.
+ */
+export const DEMO_USERNAME = 'demo'
+
 export const DEMO_CARDS = {
   demo: {
     username: 'demo',
@@ -62,7 +69,7 @@ export const DEMO_CARDS = {
     stats: { views: 2841, clicks: 962, scans: 418 },
   },
   sarahkim: {
-    username: 'sarahkim',
+    username: 'card-ae96b7db',
     fullName: 'Sarah Kim',
     title: 'Wedding & Portrait Photographer',
     bio: 'Natural-light photography across California. Booking 2026 weddings now.',
@@ -85,7 +92,7 @@ export const DEMO_CARDS = {
     stats: { views: 5120, clicks: 1740, scans: 903 },
   },
   marcusdev: {
-    username: 'marcusdev',
+    username: 'card-9900172d',
     fullName: 'Marcus Alvarez',
     title: 'Full-Stack Engineer · React & Node',
     bio: 'Freelance engineer building fast, maintainable web products. Open to contract work.',
@@ -136,6 +143,7 @@ export const EMPTY_CARD = {
   website: '',
   template: 'minimal',
   accent: '#2E6BE6',
+  logoPlate: true,
   links: [],
 }
 

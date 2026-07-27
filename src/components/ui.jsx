@@ -1,6 +1,7 @@
 import { forwardRef, useId } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, Loader2, Lock } from 'lucide-react'
+import { readableOn } from '../lib/color'
 
 export function cx(...classes) {
   return classes.filter(Boolean).join(' ')
@@ -168,6 +169,39 @@ export function SectionHeading({ eyebrow, title, description, align = 'center', 
   )
 }
 
+/* ------------------------------------------------------------ Scan corners */
+
+/**
+ * Viewfinder corners around a QR code — the frame a camera app draws, which
+ * says "point your phone here" without printing the URL underneath.
+ *
+ * `dark` raises the accent until it reads on a near-black surface, the same
+ * treatment the dark templates give it. Put this inside a `relative` box with
+ * a little padding around the code.
+ */
+export function ScanCorners({ accent = '#2E6BE6', dark = false }) {
+  const color = dark ? readableOn(accent, '#0B1424', 4.5) : accent
+  const corners = [
+    'left-0 top-0 border-l-2 border-t-2 rounded-tl-md',
+    'right-0 top-0 border-r-2 border-t-2 rounded-tr-md',
+    'left-0 bottom-0 border-b-2 border-l-2 rounded-bl-md',
+    'right-0 bottom-0 border-b-2 border-r-2 rounded-br-md',
+  ]
+
+  return (
+    <>
+      {corners.map((position) => (
+        <span
+          key={position}
+          className={cx('pointer-events-none absolute h-5 w-5', position)}
+          style={{ borderColor: color }}
+          aria-hidden="true"
+        />
+      ))}
+    </>
+  )
+}
+
 /* --------------------------------------------------------------- Brand mark */
 
 /** The two brand colours, as used by every gradient in the mark. */
@@ -260,6 +294,31 @@ export function Logo({ to = '/', className, invert = false, size = 'md' }) {
     <Link to={to} className={cx('inline-flex', className)} aria-label="CardFolio home">
       {mark}
     </Link>
+  )
+}
+
+/* ---------------------------------------------------------------- Checkbox */
+
+export function Checkbox({ id, checked, onChange, label, hint }) {
+  const generated = useId()
+  const inputId = id || generated
+
+  return (
+    <div className="flex items-start gap-2.5">
+      <input
+        id={inputId}
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded-xs border-slate-300 accent-accent-500"
+      />
+      <span className="min-w-0">
+        <label htmlFor={inputId} className="block text-sm font-medium text-navy-900">
+          {label}
+        </label>
+        {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
+      </span>
+    </div>
   )
 }
 

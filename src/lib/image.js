@@ -22,8 +22,22 @@ const LOGO_MAX_EDGE = 512
  *
  * Anything that isn't a recognised Google avatar URL is returned untouched.
  */
+/**
+ * Sizes we are willing to ask Google for.
+ *
+ * Every distinct size makes a distinct URL, and therefore a separate request:
+ * the template picker renders five cards at once, each asking for the avatar
+ * at its own size, and Google throttles the burst — the requests that lose
+ * fall back to initials, so the same card showed a photo in some templates and
+ * a letter in others. Snapping to a few buckets means one URL, one request,
+ * one cache entry.
+ */
+const PHOTO_BUCKETS = [512, 1024, 2048]
+
 export function photoSrc(url, size = 1024) {
   if (typeof url !== 'string' || !url.includes('googleusercontent.com')) return url
+
+  size = PHOTO_BUCKETS.find((bucket) => bucket >= size) ?? PHOTO_BUCKETS.at(-1)
 
   // Modern form: the sizing token is a suffix, "=s96-c" or "=s96-c-k-no".
   if (/=s\d+/.test(url)) return url.replace(/=s\d+/, `=s${size}`)

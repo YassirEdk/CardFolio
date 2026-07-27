@@ -30,12 +30,22 @@ export default function DesktopSplit({ card }) {
     <div className="min-h-dvh bg-white">
       {/* ------------------------------------------------------------- band */}
       <header className="relative overflow-hidden" style={{ backgroundColor: accent }}>
-        <HeroBanner card={card} scrim={`linear-gradient(180deg, ${accent}D9 0%, ${accent}F2 100%)`}>
-          <div
-            className="absolute inset-0 opacity-[0.14]"
-            style={{ backgroundImage: 'repeating-linear-gradient(135deg,#fff 0 1px,transparent 1px 18px)' }}
-            aria-hidden="true"
-          />
+        <HeroBanner card={card} scrim={`linear-gradient(180deg, ${accent}66 0%, ${accent}A6 100%)`}>
+          <>
+            {/* A wash of white over the flat accent: at full strength this
+                band is a wall of colour across the whole hero. It settles
+                toward the bottom, where the white text and buttons sit. */}
+            <div
+              className="absolute inset-0"
+              style={{ background: 'linear-gradient(180deg,rgba(255,255,255,0.38) 0%,rgba(255,255,255,0.14) 100%)' }}
+              aria-hidden="true"
+            />
+            <div
+              className="absolute inset-0 opacity-[0.14]"
+              style={{ backgroundImage: 'repeating-linear-gradient(135deg,#fff 0 1px,transparent 1px 18px)' }}
+              aria-hidden="true"
+            />
+          </>
         </HeroBanner>
 
         <div className="container-page relative pb-28 pt-14">
@@ -88,7 +98,7 @@ export default function DesktopSplit({ card }) {
               card={card}
               height={68}
               maxWidth={320}
-              tone={card.cover ? 'light' : 'dark'}
+              tone={card.logoPlate === false ? 'plain' : card.cover ? 'light' : 'dark'}
               className="shrink-0"
             />
           </div>

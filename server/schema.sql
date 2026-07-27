@@ -93,3 +93,8 @@ ALTER TABLE cards ADD COLUMN IF NOT EXISTS indexable     boolean NOT NULL DEFAUL
 
 -- Account-level, not card-level: it is the person who gets the email.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email boolean NOT NULL DEFAULT true;
+
+-- The plate drawn behind an uploaded logo on the templates that place it over
+-- a photo. On by default: most logo artwork is dark and needs it to stay
+-- legible, but a logo made for dark surfaces looks better without.
+ALTER TABLE cards ADD COLUMN IF NOT EXISTS logo_plate boolean NOT NULL DEFAULT true;

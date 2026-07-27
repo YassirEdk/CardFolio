@@ -62,7 +62,7 @@ export default function DesktopPhotoFocus({ card }) {
         />
 
         <div className="absolute right-8 top-8">
-          <DesktopLogo card={card} height={64} maxWidth={300} tone="light" />
+          <DesktopLogo card={card} height={64} maxWidth={300} tone={card.logoPlate === false ? 'plain' : 'light'} />
         </div>
 
         <div className="absolute inset-x-0 bottom-0 p-10 text-white">

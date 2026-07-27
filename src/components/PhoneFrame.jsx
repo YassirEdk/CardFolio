@@ -89,7 +89,11 @@ export default function PhoneFrame({ children, className, scale = 'md', chrome =
         }}
       >
         <div
-          className="no-scrollbar h-full w-full overflow-y-auto overflow-x-hidden"
+          /* `overscroll-contain`: without it, a wheel that reaches the end of
+             the card carries on into the page, so scrolling inside the phone
+             suddenly throws the whole landing page. The scroll now stops at
+             the frame's edge — while the card still has somewhere to go. */
+          className="no-scrollbar h-full w-full overflow-y-auto overflow-x-hidden overscroll-contain"
           style={safeAreas}
         >
           <ScaledCard width={screen.width} minHeight={minCardHeight}>

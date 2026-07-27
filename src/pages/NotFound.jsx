@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeft, SearchX } from 'lucide-react'
 import { Button, Logo } from '../components/ui'
+import { DEMO_USERNAME } from '../data/mockData'
 import AnimatedBackdrop from '../components/AnimatedBackdrop'
 import { SITE_DOMAIN } from '../data/mockData'
 
@@ -51,7 +52,7 @@ export default function NotFound({ context = 'page', username }) {
 
         <p className="mt-10 text-sm text-slate-500">
           Looking for the demo?{' '}
-          <Link to="/demo" className="font-semibold text-accent-600 hover:text-accent-700">
+          <Link to={`/${DEMO_USERNAME}`} className="font-semibold text-accent-600 hover:text-accent-700">
             View a live card
           </Link>
         </p>

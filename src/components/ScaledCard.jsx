@@ -19,7 +19,15 @@ export const DESIGN_WIDTH = 375
  * through under the content. `as="span"` keeps the markup valid inside a
  * <button>, which may only contain phrasing content.
  */
-export default function ScaledCard({ children, width, minHeight, className, as: Tag = 'div' }) {
+export default function ScaledCard({
+  children,
+  width,
+  minHeight,
+  className,
+  as: Tag = 'div',
+  /** The width the content is laid out for. The desktop card uses its own. */
+  designWidth = DESIGN_WIDTH,
+}) {
   const hostRef = useRef(null)
   const cardRef = useRef(null)
   const [hostWidth, setHostWidth] = useState(width || 0)
@@ -60,7 +68,7 @@ export default function ScaledCard({ children, width, minHeight, className, as: 
     return () => images.forEach((img) => img.removeEventListener('load', remeasure))
   }, [children])
 
-  const ratio = hostWidth ? hostWidth / DESIGN_WIDTH : 1
+  const ratio = hostWidth ? hostWidth / designWidth : 1
 
   return (
     <Tag
@@ -79,7 +87,7 @@ export default function ScaledCard({ children, width, minHeight, className, as: 
         // basis:auto a short card grows to fill and a long one keeps its height.
         className={cx(minHeight ? 'flex flex-col [&>*]:grow' : 'block')}
         style={{
-          width: DESIGN_WIDTH,
+          width: designWidth,
           minHeight,
           transform: `scale(${ratio})`,
           transformOrigin: 'top left',

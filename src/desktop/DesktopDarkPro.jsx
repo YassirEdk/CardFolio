@@ -65,7 +65,7 @@ export default function DesktopDarkPro({ card }) {
           <div className="mx-auto max-w-6xl">
             {card.logo && (
               <div className="mb-10 flex justify-end">
-                <DesktopLogo card={card} height={64} maxWidth={320} tone={card.cover ? 'light' : 'dark'} />
+                <DesktopLogo card={card} height={64} maxWidth={320} tone={card.logoPlate === false ? 'plain' : card.cover ? 'light' : 'dark'} />
               </div>
             )}
 

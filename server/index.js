@@ -5,6 +5,7 @@ import express from 'express'
 import cors from 'cors'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import { randomUUID } from 'node:crypto'
 import { OAuth2Client } from 'google-auth-library'
 import { pool, query, transaction, toCard } from './db.js'
 
@@ -95,6 +96,41 @@ app.get('/api/usernames/:username/available', asyncRoute(async (req, res) => {
   res.json({ available: rows.length === 0 })
 }))
 
+/**
+ * Streams a remote image through this origin.
+ *
+ * The cropper draws into a canvas and exports it, which a cross-origin image
+ * taints — and negotiating CORS in the browser proved unreliable against
+ * cached copies. Same-origin bytes have nothing to negotiate.
+ *
+ * The host allowlist is the point: an unrestricted fetcher is an open proxy,
+ * and one that follows arbitrary URLs from the internet is an SSRF hole.
+ */
+const IMAGE_HOSTS = [/(^|\.)googleusercontent\.com$/, /(^|\.)unsplash\.com$/, /(^|\.)gravatar\.com$/]
+
+app.get('/api/image', asyncRoute(async (req, res) => {
+  let target
+  try {
+    target = new URL(String(req.query.url || ''))
+  } catch {
+    return res.status(400).json({ error: 'Not a URL' })
+  }
+
+  if (target.protocol !== 'https:' || !IMAGE_HOSTS.some((host) => host.test(target.hostname))) {
+    return res.status(403).json({ error: 'That host is not proxied' })
+  }
+
+  const upstream = await fetch(target, { redirect: 'follow' })
+  if (!upstream.ok) return res.status(upstream.status).json({ error: 'Upstream refused' })
+
+  const type = upstream.headers.get('content-type') || ''
+  if (!type.startsWith('image/')) return res.status(415).json({ error: 'Not an image' })
+
+  res.set('Content-Type', type)
+  res.set('Cache-Control', 'public, max-age=3600')
+  res.send(Buffer.from(await upstream.arrayBuffer()))
+}))
+
 /* ------------------------------------------------------------------- auth */
 
 app.post('/api/auth/signup', asyncRoute(async (req, res) => {
@@ -124,7 +160,7 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
         [fullName, email, passwordHash]
       )
       const user = userRows[0]
-      const handle = username || (await deriveUsername(client, email, fullName))
+      const handle = username || (await newUsername(client))
       const { rows: cardRows } = await client.query(
         `INSERT INTO cards (user_id, username, full_name, email) VALUES ($1,$2,$3,$4) RETURNING *`,
         [user.id, handle, fullName, email]
@@ -170,23 +206,26 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
 }))
 
 /**
- * Turns "john.doe@gmail.com" into a free username: johndoe, johndoe2, …
- * Google gives us no handle, so we derive one and let the user change it later.
+ * A card URL for a new account.
+ *
+ * Random, not derived from the email or the name: a handle like "johndoe" or
+ * "contactyassir" publishes part of someone's address to every visitor, and
+ * the card URL is the one thing a free account cannot change. Choosing your
+ * own is a Pro feature, so what free accounts get should be neutral.
+ *
+ * `crypto.randomUUID` gives the entropy; the collision loop stays because the
+ * column is unique and 8 characters is short enough to be worth checking.
  */
-async function deriveUsername(client, email, fullName) {
-  const seed =
-    String(email || '').split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '') ||
-    String(fullName || '').toLowerCase().replace(/[^a-z0-9-]/g, '') ||
-    'member'
-  const base = seed.replace(/^-+/, '').slice(0, 24).padEnd(3, '0')
-
+async function newUsername(client) {
   for (let attempt = 0; attempt < 50; attempt++) {
-    const candidate = attempt === 0 ? base : `${base}${attempt + 1}`
+    const suffix = randomUUID().replace(/-/g, '').slice(0, 8)
+    const candidate = `card-${suffix}`
     if (RESERVED.has(candidate) || !USERNAME_RE.test(candidate)) continue
     const { rows } = await client.query('SELECT 1 FROM cards WHERE lower(username) = $1', [candidate])
     if (rows.length === 0) return candidate
   }
-  return `member${Date.now().toString().slice(-8)}`
+  // Unreachable in practice; a timestamp is still unique enough to insert.
+  return `card-${Date.now().toString(36)}`
 }
 
 app.post('/api/auth/google', asyncRoute(async (req, res) => {
@@ -196,6 +235,14 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
 
   const credential = String(req.body.credential || '')
   if (!credential) return res.status(400).json({ error: 'Missing Google credential' })
+
+  /**
+   * `mode: 'login'` refuses to create anything. The login page sends it so an
+   * unknown Google account is told to register rather than silently ending up
+   * with a new, empty account it never asked for — which is indistinguishable,
+   * from the user's side, from having signed in with the wrong address.
+   */
+  const loginOnly = req.body.mode === 'login'
 
   // Verify against Google's public keys. Never trust the token's contents
   // before this — the client could have sent anything.
@@ -238,7 +285,10 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
       }
     }
 
-    // 3. Brand new account: create the user and an unpublished card.
+    // 3. Brand new account: create the user and an unpublished card — unless
+    //    this came from the login page, which may only sign existing people in.
+    if (!user && loginOnly) return null
+
     if (!user) {
       ;({ rows } = await client.query(
         `INSERT INTO users (full_name, email, google_sub, avatar_url) VALUES ($1,$2,$3,$4) RETURNING *`,
@@ -246,7 +296,7 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
       ))
       user = rows[0]
 
-      const username = await deriveUsername(client, payload.email, payload.name)
+      const username = await newUsername(client)
       await client.query(
         `INSERT INTO cards (user_id, username, full_name, email, photo) VALUES ($1,$2,$3,$4,$5)`,
         [user.id, username, user.full_name, user.email, picture]
@@ -260,6 +310,13 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
 
     return { user, card: toCard(cardRows[0], links) }
   })
+
+  if (!result) {
+    return res.status(404).json({
+      error: 'No account uses that Google address yet. Create one first.',
+      reason: 'no-account',
+    })
+  }
 
   res.json({
     token: sign(result.user),
@@ -330,6 +387,14 @@ const TEXT_FIELDS = [
 
 const FROM_CAMEL = { full_name: 'fullName' }
 
+/**
+ * Columns declared NOT NULL DEFAULT ''. Blanking one has to store the empty
+ * string, not NULL — the blanket ''→NULL below is right for the optional
+ * fields and a constraint violation for these, which is what made saving a
+ * card with no title fail with a 500.
+ */
+const NOT_NULL_TEXT = new Set(['full_name', 'title', 'bio'])
+
 /** Templates a free account may use. Everything else is part of Pro. */
 const FREE_TEMPLATES = new Set(['minimal'])
 
@@ -379,13 +444,19 @@ app.put('/api/me/card', auth, asyncRoute(async (req, res) => {
   for (const column of TEXT_FIELDS) {
     const key = FROM_CAMEL[column] || column
     if (key in body) {
-      values.push(body[key] === '' ? null : body[key])
+      const blank = body[key] === '' || body[key] === null || body[key] === undefined
+      values.push(blank ? (NOT_NULL_TEXT.has(column) ? '' : null) : body[key])
       sets.push(`${column} = $${values.length}`)
     }
   }
   if ('published' in body) {
     values.push(Boolean(body.published))
     sets.push(`published = $${values.length}`)
+  }
+  // A design choice, not a plan feature — free cards set it too.
+  if ('logoPlate' in body) {
+    values.push(Boolean(body.logoPlate))
+    sets.push(`logo_plate = $${values.length}`)
   }
 
   /**
@@ -513,6 +584,20 @@ app.put('/api/me/prefs', auth, asyncRoute(async (req, res) => {
     [next, req.userId]
   )
   res.json({ user: publicUser(rows[0]) })
+}))
+
+/**
+ * Deletes the account and everything hanging off it.
+ *
+ * One statement: cards, card_links and card_events all cascade from the user
+ * row, so there is nothing to clean up by hand and nothing to leave behind if
+ * a later step were to fail. The username is freed by the same delete, which
+ * is why this cannot be a soft delete without also parking the handle.
+ */
+app.delete('/api/me', auth, asyncRoute(async (req, res) => {
+  const { rowCount } = await query('DELETE FROM users WHERE id = $1', [req.userId])
+  if (!rowCount) return res.status(404).json({ error: 'Account not found' })
+  res.json({ deleted: true })
 }))
 
 /* -------------------------------------------------------------- analytics */

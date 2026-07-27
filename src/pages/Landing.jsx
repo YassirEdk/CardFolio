@@ -25,8 +25,8 @@ import AnimatedBackdrop from '../components/AnimatedBackdrop'
 import QrCode from '../components/QrCode'
 import CardView from '../components/CardView'
 import ScaledCard from '../components/ScaledCard'
-import { Button, Panel, SectionHeading, Badge, BrandMark, cx } from '../components/ui'
-import { DEMO_CARDS, SITE_DOMAIN } from '../data/mockData'
+import { Button, Panel, SectionHeading, Badge, BrandMark, ScanCorners, cx } from '../components/ui'
+import { DEMO_CARDS, DEMO_USERNAME, SITE_DOMAIN } from '../data/mockData'
 import { TEMPLATES } from '../templates'
 
 /* ------------------------------------------------------------------- data */
@@ -106,10 +106,14 @@ const FAQS = [
 function Hero() {
   const card = DEMO_CARDS.demo
 
+  // The hero fills the first screen and uses the full page width, rather than
+  // sitting in the 1200px column the rest of the page is set in: it is the one
+  // section whose job is the whole viewport. `100dvh - 4rem` is the screen
+  // minus the sticky header, so nothing is cut off underneath it.
   return (
-    <section className="relative overflow-hidden border-b border-slate-200 bg-white">
+    <section className="relative flex min-h-[calc(100dvh-4rem)] items-center overflow-hidden border-b border-slate-200 bg-white">
       <AnimatedBackdrop className="-z-10" />
-      <div className="container-page grid items-center gap-14 py-16 lg:grid-cols-[1.05fr_1fr] lg:py-24">
+      <div className="mx-auto grid w-full max-w-[1600px] items-center gap-14 px-5 py-16 lg:grid-cols-[1.05fr_1fr] lg:px-12 lg:py-20 xl:px-16">
         <div className="animate-fade-up">
           <Badge tone="accent">
             <span className="h-1.5 w-1.5 rounded-md bg-accent-500" aria-hidden="true" />
@@ -129,7 +133,7 @@ function Hero() {
               Create your free card
               <ArrowRight size={17} aria-hidden="true" />
             </Button>
-            <Button as={Link} to="/demo" variant="secondary" size="lg">
+            <Button as={Link} to={`/${DEMO_USERNAME}`} variant="secondary" size="lg">
               <Smartphone size={17} aria-hidden="true" />
               See a live card
             </Button>
@@ -145,21 +149,26 @@ function Hero() {
           </ul>
         </div>
 
-        <div className="flex items-center justify-center gap-6 lg:justify-end">
+        {/* The row is pinned to the right edge, so widening the gap moves the
+            phone left and leaves the QR where it is. */}
+        <div className="flex items-center justify-center gap-6 lg:justify-end lg:gap-12 xl:gap-16">
           <PhoneFrame scale="md" chrome tilt className="animate-fade-up">
             <CardView card={card} interactive={false} />
           </PhoneFrame>
 
           <div className="hidden animate-fade-up flex-col items-center sm:flex">
-            <Panel className="p-4">
-              <QrCode value={`https://${SITE_DOMAIN}/${card.username}`} size={132} />
-            </Panel>
+            {/* Viewfinder corners rather than the address printed underneath:
+                the URL only restated what the code already carries, and it
+                wrapped badly on a long domain. */}
+            <div className="relative p-2.5">
+              <ScanCorners accent={card.accent} />
+              <Panel className="p-4">
+                <QrCode value={`https://${SITE_DOMAIN}/${card.username}`} size={132} />
+              </Panel>
+            </div>
             <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500">
               <ScanLine size={14} aria-hidden="true" />
               Scan to open
-            </p>
-            <p className="mt-1 text-xs font-medium text-navy-900">
-              {SITE_DOMAIN}/{card.username}
             </p>
           </div>
         </div>
@@ -489,7 +498,7 @@ function FinalCta() {
           </Button>
           <Button
             as={Link}
-            to="/demo"
+            to={`/${DEMO_USERNAME}`}
             size="lg"
             variant="ghost"
             className="border-navy-700 text-slate-200 hover:bg-navy-800 hover:text-white"

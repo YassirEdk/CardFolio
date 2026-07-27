@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, Move, RotateCcw, X, ZoomIn } from 'lucide-react'
 import { Button } from './ui'
 import { encodeCanvas } from '../lib/image'
+import { API_BASE } from '../lib/api'
 
 /**
  * A dependency-free image cropper with a fixed aspect frame.
@@ -10,6 +11,11 @@ import { encodeCanvas } from '../lib/image'
  * scaled to *cover* the frame, then panned. Because both use the same maths,
  * what you see in the frame is exactly what gets written to the canvas.
  */
+
+/** Zoom bounds, shared by the slider and the wheel. */
+const ZOOM_MIN = 1
+const ZOOM_MAX = 3
+
 export default function ImageCropper({
   src,
   aspect = 3,
@@ -19,6 +25,8 @@ export default function ImageCropper({
   /** WebP quality for the exported crop. */
   quality = 0.9,
   title,
+  /** Zoom/offset to resume from, as handed back by a previous `onApply`. */
+  initialTransform,
   onCancel,
   onApply,
 }) {
@@ -28,9 +36,20 @@ export default function ImageCropper({
 
   const [natural, setNatural] = useState(null) // { w, h }
   const [frame, setFrame] = useState({ w: 0, h: 0 })
-  const [zoom, setZoom] = useState(1)
-  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(initialTransform?.zoom ?? 1)
+  const [offset, setOffset] = useState(initialTransform?.offset ?? { x: 0, y: 0 })
   const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState(null)
+
+  /**
+   * Remote images are loaded through this origin (see GET /api/image). The
+   * canvas is exported on apply, and a cross-origin image taints it — asking
+   * the browser to negotiate CORS worked in theory and failed in practice
+   * against cached copies, so the bytes come from here instead.
+   *
+   * Data URLs are already ours; they are used untouched.
+   */
+  const source = /^https?:/i.test(src) ? `${API_BASE}/api/image?url=${encodeURIComponent(src)}` : src
 
   // Scale needed for the image to cover the frame, before user zoom.
   const coverScale = natural && frame.w ? Math.max(frame.w / natural.w, frame.h / natural.h) : 1
@@ -39,7 +58,11 @@ export default function ImageCropper({
   /** Keeps the image covering the frame — no empty gutters at any pan/zoom. */
   const clamp = useCallback(
     (next, activeScale = scale) => {
-      if (!natural || !frame.w) return { x: 0, y: 0 }
+      // Nothing measured yet, so there are no bounds to clamp to. Returning
+      // {0,0} here would recentre a restored framing before the image had
+      // even loaded — the effect below runs on mount, and it runs again once
+      // the measurements land, which is when clamping actually means anything.
+      if (!natural || !frame.w) return next
       const maxX = Math.max(0, (natural.w * activeScale - frame.w) / 2)
       const maxY = Math.max(0, (natural.h * activeScale - frame.h) / 2)
       return {
@@ -62,6 +85,33 @@ export default function ImageCropper({
   }, [aspect])
 
   useEffect(() => setOffset((current) => clamp(current)), [zoom, clamp])
+
+  /**
+   * Wheel to zoom, within the same 1–3 range as the slider.
+   *
+   * Registered natively with `passive: false` rather than as an onWheel prop:
+   * React attaches wheel listeners passively, where preventDefault is ignored
+   * and the page scrolls behind the dialog while you are zooming.
+   *
+   * The step scales with the current zoom so the gesture feels even — a fixed
+   * step crawls when zoomed out and lurches when zoomed in.
+   */
+  useEffect(() => {
+    const frame = frameRef.current
+    if (!frame) return
+
+    function onWheel(event) {
+      event.preventDefault()
+      const direction = event.deltaY > 0 ? -1 : 1
+      setZoom((current) => {
+        const next = current * (1 + direction * 0.12)
+        return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(next.toFixed(3))))
+      })
+    }
+
+    frame.addEventListener('wheel', onWheel, { passive: false })
+    return () => frame.removeEventListener('wheel', onWheel)
+  }, [])
 
   useEffect(() => {
     function onKey(event) {
@@ -94,6 +144,7 @@ export default function ImageCropper({
   async function apply() {
     if (!natural || !frame.w) return
     setBusy(true)
+    setFailure(null)
     try {
       // Map the visible frame back into natural image coordinates.
       const sw = frame.w / scale
@@ -116,7 +167,13 @@ export default function ImageCropper({
       ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(imageRef.current, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
 
-      onApply(encodeCanvas(canvas, { quality }))
+      // The transform travels with the result so the next open can resume
+      // from this framing rather than resetting to the centre.
+      onApply(encodeCanvas(canvas, { quality }), { zoom, offset })
+    } catch {
+      // A source that refuses CORS still taints the canvas. Say so rather than
+      // leaving the button to click with nothing happening.
+      setFailure('This image can’t be cropped here. Upload it from your device instead.')
     } finally {
       setBusy(false)
     }
@@ -136,7 +193,7 @@ export default function ImageCropper({
             <h2 className="text-sm font-bold text-navy-900">{title || 'Crop image'}</h2>
             <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-slate-500">
               <Move size={12} aria-hidden="true" />
-              Drag to reposition, then zoom to frame it
+              Drag to reposition, scroll to zoom
             </p>
           </div>
           <button
@@ -161,12 +218,14 @@ export default function ImageCropper({
           >
             <img
               ref={imageRef}
-              src={src}
+              key={source}
+              src={source}
               alt=""
               draggable={false}
               onLoad={(event) =>
                 setNatural({ w: event.currentTarget.naturalWidth, h: event.currentTarget.naturalHeight })
               }
+              onError={() => setFailure('This image could not be loaded.')}
               className="absolute left-1/2 top-1/2 max-w-none origin-center"
               style={{
                 width: natural ? natural.w * scale : 'auto',
@@ -202,8 +261,8 @@ export default function ImageCropper({
             <ZoomIn size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
             <input
               type="range"
-              min={1}
-              max={3}
+              min={ZOOM_MIN}
+              max={ZOOM_MAX}
               step={0.01}
               value={zoom}
               onChange={(event) => setZoom(Number(event.target.value))}
@@ -224,7 +283,12 @@ export default function ImageCropper({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2.5 border-t border-slate-200 bg-slate-50 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-200 bg-slate-50 px-5 py-4">
+          {failure && (
+            <p role="alert" className="mr-auto text-xs font-medium text-red-600">
+              {failure}
+            </p>
+          )}
           <Button type="button" variant="secondary" onClick={onCancel}>
             Cancel
           </Button>

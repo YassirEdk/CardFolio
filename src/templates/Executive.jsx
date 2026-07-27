@@ -1,5 +1,5 @@
 import { ArrowUpRight, MapPin } from 'lucide-react'
-import { Avatar, ActionRow, PoweredBy, contactItems, socialItems, linkProps } from './shared'
+import { Avatar, ActionRow, PoweredBy, LogoMark, contactItems, socialItems, linkProps } from './shared'
 import { cx } from '../components/ui'
 
 /**
@@ -175,11 +175,17 @@ export default function Executive({ card, onSaveContact, onShare }) {
           )}
 
           {card.logo ? (
-            <img
-              src={card.logo}
-              alt=""
-              className="absolute right-5 top-[calc(1.25rem+var(--phone-safe-top,0px))] h-8 w-auto object-contain"
-            />
+            // LogoMark rather than a bare <img>: the letterhead is dark or a
+            // photo, so the logo needs the same plate the other templates give
+            // it — and the same switch to turn that plate off.
+            <div className="absolute right-5 top-[calc(1.25rem+var(--phone-safe-top,0px))]">
+              <LogoMark
+                card={card}
+                height={32}
+                maxWidth={168}
+                tone={card.logoPlate === false ? 'plain' : 'light'}
+              />
+            </div>
           ) : (
             card.company && (
               <span className="absolute right-5 top-[calc(1.25rem+var(--phone-safe-top,0px))] inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white/80 backdrop-blur-sm">

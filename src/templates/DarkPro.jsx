@@ -52,7 +52,12 @@ export default function DarkPro({ card, onSaveContact, onShare }) {
         {/* `--phone-safe-top` is the notch inset when this card is being shown
             inside a phone frame, and 0 on a real page. */}
         <div className="absolute right-5 top-[calc(1.25rem+var(--phone-safe-top,0px))]">
-          <LogoMark card={card} height={36} maxWidth={168} tone={card.cover ? 'light' : 'dark'} />
+          <LogoMark
+            card={card}
+            height={36}
+            maxWidth={168}
+            tone={card.logoPlate === false ? 'plain' : card.cover ? 'light' : 'dark'}
+          />
         </div>
         {/* Hairline in the accent, seating the header on the body. */}
         <span
