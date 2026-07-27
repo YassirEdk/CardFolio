@@ -50,6 +50,17 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Where the API lives.
+ *
+ * Empty in dev and in same-origin deployments, so calls stay relative and
+ * Vite's proxy (or the host's rewrite) handles them. Set VITE_API_URL when the
+ * front end is hosted apart from the server — a static host has no proxy, and
+ * a relative /api call there just returns the SPA's own HTML, which every
+ * caller then reads as "not found".
+ */
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+
 async function request(path, { method = 'GET', body, auth = false } = {}) {
   const headers = {}
   if (body !== undefined) headers['content-type'] = 'application/json'
@@ -60,7 +71,7 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
 
   let response
   try {
-    response = await fetch(`/api${path}`, {
+    response = await fetch(`${API_BASE}/api${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
