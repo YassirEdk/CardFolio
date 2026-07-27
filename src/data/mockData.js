@@ -5,7 +5,21 @@
  * public card can show its loading skeleton.
  */
 
-export const SITE_DOMAIN = 'cardfolio.ink'
+/**
+ * The domain cards are published on.
+ *
+ * Read from the browser rather than hardcoded: a card's URL and its QR code
+ * have to point at wherever this build is actually being served — the Vercel
+ * preview domain today, the real domain once it is pointed here. A fixed
+ * string produced links and printed QR codes for a host that wasn't serving
+ * anything. The constant is only the fallback for non-browser contexts.
+ */
+// The live deployment. Replace this when a real domain is pointed at the app —
+// though in a browser the host below is used instead, so it self-corrects.
+const FALLBACK_DOMAIN = 'card-folio-hazel.vercel.app'
+
+export const SITE_DOMAIN =
+  typeof window !== 'undefined' && window.location?.host ? window.location.host : FALLBACK_DOMAIN
 
 /** Photo for the primary demo card, John Doe. */
 export const DEMO_PHOTO =

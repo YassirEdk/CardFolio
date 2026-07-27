@@ -1,4 +1,6 @@
 import 'dotenv/config'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cors from 'cors'
 import bcrypt from 'bcryptjs'
@@ -583,12 +585,27 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: 'Something went wrong on our side.' })
 })
 
-const server = app.listen(PORT, () => {
-  console.log(`CardFolio API listening on http://localhost:${PORT}`)
-})
+/**
+ * Two ways to run: as a long-lived process (`npm run server`, and any host that
+ * runs a Node service), or as a serverless function that imports `app` and
+ * hands it each request — see api/index.js.
+ *
+ * `listen` therefore only happens when this file is the entry point. Calling it
+ * on import would bind a port inside a function instance, which is both useless
+ * and, on some platforms, fatal.
+ */
+const isEntryPoint = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => {
-    server.close(() => pool.end().then(() => process.exit(0)))
+if (isEntryPoint) {
+  const server = app.listen(PORT, () => {
+    console.log(`CardFolio API listening on http://localhost:${PORT}`)
   })
+
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+      server.close(() => pool.end().then(() => process.exit(0)))
+    })
+  }
 }
+
+export default app

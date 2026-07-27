@@ -1,7 +1,7 @@
 # CardFolio
 
 A digital business card platform for freelancers and professionals. Each user gets a
-personal link (`cardfolio.ink/yourname`) and a downloadable QR code that opens their card.
+personal link (`card-folio-hazel.vercel.app/yourname`) and a downloadable QR code that opens their card.
 
 Built with React 18, React Router 6, Tailwind CSS v4, Lucide icons, `qrcode` and Recharts.
 All data is mocked — no backend required to preview any screen.
