@@ -150,6 +150,26 @@
   .animate-plan-in { animation: plan-in 0.32s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
 }
 
+/* ------------------------------------------------------- floating phone */
+/* The dashboard previews hover rather than sit: a slow rise and fall, with a
+   ground shadow that tightens as the phone lifts. Long and small on purpose —
+   this is a mockup on a working page, not an animation to watch. */
+
+@keyframes phone-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+@keyframes phone-float-shadow {
+  0%, 100% { transform: translateX(-50%) scaleX(1); opacity: 0.28; }
+  50%      { transform: translateX(-50%) scaleX(0.86); opacity: 0.16; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-phone-float { animation: phone-float 6s ease-in-out infinite; }
+  .animate-phone-float-shadow { animation: phone-float-shadow 6s ease-in-out infinite; }
+}
+
 /* ---------------------------------------------------- ambient background */
 /* Slow-drifting blue fields. Deliberately long durations and low opacity —
    this should read as depth, never as motion competing with the content. */

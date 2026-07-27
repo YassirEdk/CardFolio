@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { cx } from './ui'
 import ScaledCard, { DESIGN_WIDTH } from './ScaledCard'
 
@@ -14,7 +15,22 @@ import ScaledCard, { DESIGN_WIDTH } from './ScaledCard'
  * Note: the device body deliberately uses large corner radii. The 8px ceiling
  * is a rule for UI chrome; this is an illustration of a physical object.
  */
-export default function PhoneFrame({ children, className, scale = 'md', chrome = true, tilt = false }) {
+export default function PhoneFrame({
+  children,
+  className,
+  scale = 'md',
+  chrome = true,
+  tilt = false,
+  /**
+   * 0–1: how far through the card to show, driven from outside. Supplying it
+   * turns the screen's own scrolling off — the page is the scrollbar now, and
+   * two scroll surfaces fighting over one wheel is what makes those hero
+   * animations feel broken.
+   */
+  progress,
+  /** Extra transform on the device body, e.g. a scroll-driven rotation. */
+  bodyStyle,
+}) {
   // Widths track the iPhone X 375×812 ratio (≈0.462) so proportions stay honest.
   const sizes = {
     sm: { width: 240, height: 520 },
@@ -42,6 +58,26 @@ export default function PhoneFrame({ children, className, scale = 'md', chrome =
    * padding its own content — never by leaving a band of device black, which
    * would read as a hole in the lighter templates.
    */
+  /**
+   * How far the card can travel inside the screen, measured rather than
+   * assumed: card height depends on the template and on how much the person
+   * filled in.
+   */
+  const scrollRef = useRef(null)
+  const [travel, setTravel] = useState(0)
+  const driven = typeof progress === 'number'
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!driven || !el) return
+    const measure = () => setTravel(Math.max(0, el.scrollHeight - el.clientHeight))
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    if (el.firstElementChild) observer.observe(el.firstElementChild)
+    return () => observer.disconnect()
+  }, [driven, children])
+
   const toDesignPx = (value) => Math.round((value * DESIGN_WIDTH) / screen.width)
   const safeAreas = chrome
     ? {
@@ -61,7 +97,7 @@ export default function PhoneFrame({ children, className, scale = 'md', chrome =
           ? 'shadow-[0_2px_0_rgba(255,255,255,0.10)_inset,0_50px_90px_-20px_rgba(3,10,20,0.75)]'
           : 'shadow-[0_1px_0_rgba(255,255,255,0.08)_inset,var(--shadow-lift)]'
       )}
-      style={{ padding: bezel, borderRadius: chrome ? bodyRadius : undefined }}
+      style={{ padding: bezel, borderRadius: chrome ? bodyRadius : undefined, ...bodyStyle }}
     >
       {/* Polished metal rim */}
       {chrome && (
@@ -89,16 +125,33 @@ export default function PhoneFrame({ children, className, scale = 'md', chrome =
         }}
       >
         <div
-          /* `overscroll-contain`: without it, a wheel that reaches the end of
-             the card carries on into the page, so scrolling inside the phone
-             suddenly throws the whole landing page. The scroll now stops at
-             the frame's edge — while the card still has somewhere to go. */
-          className="no-scrollbar h-full w-full overflow-y-auto overflow-x-hidden overscroll-contain"
+          ref={scrollRef}
+          /*
+           * Driven by the page: the screen must not scroll on its own, or a
+           * wheel over the phone moves the card *and* the page moves it again.
+           * `touch-action: pan-y` hands vertical drags to the page for the
+           * same reason on a touchscreen.
+           *
+           * Otherwise it scrolls itself, and `overscroll-contain` stops a wheel
+           * that reaches the end of the card from carrying on into the page.
+           */
+          className={cx(
+            'no-scrollbar h-full w-full overflow-x-hidden',
+            driven ? 'touch-pan-y overflow-y-hidden' : 'overflow-y-auto overscroll-contain'
+          )}
           style={safeAreas}
         >
-          <ScaledCard width={screen.width} minHeight={minCardHeight}>
-            {children}
-          </ScaledCard>
+          <div
+            style={
+              driven
+                ? { transform: `translate3d(0, ${-travel * progress}px, 0)`, willChange: 'transform' }
+                : undefined
+            }
+          >
+            <ScaledCard width={screen.width} minHeight={minCardHeight}>
+              {children}
+            </ScaledCard>
+          </div>
         </div>
 
         {chrome ? (

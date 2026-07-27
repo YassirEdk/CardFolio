@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Link2,
@@ -103,73 +103,221 @@ const FAQS = [
 
 /* --------------------------------------------------------------- sections */
 
+/**
+ * Scroll progress through an element, 0 while its top is at the top of the
+ * viewport and 1 once it has been scrolled past its own extra height.
+ *
+ * Read in a rAF callback rather than on every scroll event: scroll fires far
+ * more often than the screen repaints, and this drives a transform.
+ */
+function useScrollProgress(ref) {
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    let frame = 0
+    let target = 0
+    let current = 0
+
+    function read() {
+      const rect = el.getBoundingClientRect()
+      const runway = rect.height - window.innerHeight
+      target = runway <= 0 ? 0 : Math.min(1, Math.max(0, -rect.top / runway))
+    }
+
+    /**
+     * Chase the target instead of jumping to it.
+     *
+     * A wheel arrives in coarse steps — often 100px at a time — and mapping
+     * those straight onto a transform makes the card lurch. Easing 18% of the
+     * remaining distance each frame turns the steps into motion, and the loop
+     * stops once it arrives so nothing runs while the page is still.
+     */
+    function tick() {
+      const delta = target - current
+      current = Math.abs(delta) < 0.0005 ? target : current + delta * 0.18
+      setProgress(current)
+      frame = current === target ? 0 : requestAnimationFrame(tick)
+    }
+
+    function onScroll() {
+      read()
+      if (!frame) frame = requestAnimationFrame(tick)
+    }
+
+    read()
+    current = target
+    setProgress(current)
+
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [ref])
+
+  return progress
+}
+
+/** True on screens wide enough for the scroll stage — see Hero. */
+function useWideScreen() {
+  const [wide, setWide] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  )
+
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1024px)')
+    const onChange = (event) => setWide(event.matches)
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
+
+  return wide
+}
+
 function Hero() {
   const card = DEMO_CARDS.demo
+  const stageRef = useRef(null)
+  const rawProgress = useScrollProgress(stageRef)
+
+  /**
+   * The scroll stage is a desktop idea. On a phone the copy and the device
+   * are already stacked, there is no room to move the phone "into the middle"
+   * of anything, and pinning 220vh of runway means a visitor scrolls three
+   * screens of animation before reaching the first section. Below lg the hero
+   * is a plain hero: everything visible, nothing pinned.
+   */
+  const staged = useWideScreen()
+  const progress = staged ? rawProgress : 0
+
+  /**
+   * Two acts on one scrollbar. The phone straightens and moves to the middle
+   * of an emptying stage first; only once it is upright does the card start
+   * playing through it, so the two motions read as cause and effect rather
+   * than as everything moving at once.
+   */
+  const turn = Math.min(1, progress / 0.35)
+  // Finishes at 90%, not at the very end: the last stretch of the pin is a
+  // beat where nothing moves, so the card is not still travelling at the
+  // moment the page starts scrolling away underneath it.
+  const play = Math.min(1, Math.max(0, (progress - 0.35) / 0.55))
+  const ease = (t) => 1 - Math.pow(1 - t, 3)
+  const turned = ease(turn)
 
   // The hero fills the first screen and uses the full page width, rather than
   // sitting in the 1200px column the rest of the page is set in: it is the one
   // section whose job is the whole viewport. `100dvh - 4rem` is the screen
   // minus the sticky header, so nothing is cut off underneath it.
   return (
-    <section className="relative flex min-h-[calc(100dvh-4rem)] items-center overflow-hidden border-b border-slate-200 bg-white">
-      <AnimatedBackdrop className="-z-10" />
-      <div className="mx-auto grid w-full max-w-[1600px] items-center gap-14 px-5 py-16 lg:grid-cols-[1.05fr_1fr] lg:px-12 lg:py-20 xl:px-16">
-        <div className="animate-fade-up">
-          <Badge tone="accent">
-            <span className="h-1.5 w-1.5 rounded-md bg-accent-500" aria-hidden="true" />
-            Trusted by 12,000+ professionals
-          </Badge>
+    /**
+     * Twice the viewport tall: the extra height is the runway the pinned stage
+     * inside it scrolls through. Take it away and there is nothing to drive
+     * the animation with.
+     */
+    <section
+      ref={stageRef}
+      className={cx(
+        'relative border-b border-slate-200 bg-white',
+        staged ? 'h-[220vh]' : 'min-h-[calc(100dvh-4rem)]'
+      )}
+    >
+      <div
+        className={cx(
+          'flex items-center overflow-hidden',
+          staged ? 'sticky top-0 h-dvh' : 'min-h-[calc(100dvh-4rem)] py-14'
+        )}
+      >
+        <AnimatedBackdrop className="-z-10" />
 
-          <h1 className="mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-navy-900 text-balance sm:text-5xl lg:text-[3.4rem]">
-            Your business card should never run out.
-          </h1>
-          <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">
-            CardFolio turns your contact details, portfolio and social profiles into one professional digital card —
-            shared with a personal link or a QR code, updated in seconds, never reprinted.
-          </p>
+        <div className="mx-auto grid w-full max-w-[1600px] items-center gap-14 px-5 lg:grid-cols-[1.05fr_1fr] lg:px-12 xl:px-16">
+          {/* The copy clears out of the way as the phone takes the stage. */}
+          <div
+            className="animate-fade-up"
+            style={{
+              opacity: 1 - turned,
+              transform: `translate3d(${-40 * turned}px, 0, 0)`,
+              pointerEvents: turned > 0.6 ? 'none' : undefined,
+            }}
+          >
+            <Badge tone="accent">
+              <span className="h-1.5 w-1.5 rounded-md bg-accent-500" aria-hidden="true" />
+              Trusted by 12,000+ professionals
+            </Badge>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button as={Link} to="/signup" size="lg">
-              Create your free card
-              <ArrowRight size={17} aria-hidden="true" />
-            </Button>
-            <Button as={Link} to={`/${DEMO_USERNAME}`} variant="secondary" size="lg">
-              <Smartphone size={17} aria-hidden="true" />
-              See a live card
-            </Button>
+            <h1 className="mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-navy-900 text-balance sm:text-5xl lg:text-[3.4rem]">
+              Your business card should never run out.
+            </h1>
+            <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">
+              CardFolio turns your contact details, portfolio and social profiles into one professional digital card —
+              shared with a personal link or a QR code, updated in seconds, never reprinted.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Button as={Link} to="/signup" size="lg">
+                Create your free card
+                <ArrowRight size={17} aria-hidden="true" />
+              </Button>
+              <Button as={Link} to={`/${DEMO_USERNAME}`} variant="secondary" size="lg">
+                <Smartphone size={17} aria-hidden="true" />
+                See a live card
+              </Button>
+            </div>
+
+            <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
+              {['Free plan, no card required', 'Ready in under 3 minutes', 'Works on every phone'].map((item) => (
+                <li key={item} className="inline-flex items-center gap-1.5">
+                  <Check size={15} className="text-accent-500" aria-hidden="true" />
+                  {item}
+                </li>
+              ))}
+            </ul>
           </div>
 
-          <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
-            {['Free plan, no card required', 'Ready in under 3 minutes', 'Works on every phone'].map((item) => (
-              <li key={item} className="inline-flex items-center gap-1.5">
-                <Check size={15} className="text-accent-500" aria-hidden="true" />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* The row is pinned to the right edge, so widening the gap moves the
-            phone left and leaves the QR where it is. */}
-        <div className="flex items-center justify-center gap-6 lg:justify-end lg:gap-12 xl:gap-16">
-          <PhoneFrame scale="md" chrome tilt className="animate-fade-up">
-            <CardView card={card} interactive={false} />
-          </PhoneFrame>
-
-          <div className="hidden animate-fade-up flex-col items-center sm:flex">
-            {/* Viewfinder corners rather than the address printed underneath:
-                the URL only restated what the code already carries, and it
-                wrapped badly on a long domain. */}
-            <div className="relative p-2.5">
-              <ScanCorners accent={card.accent} />
-              <Panel className="p-4">
-                <QrCode value={`https://${SITE_DOMAIN}/${card.username}`} size={132} />
-              </Panel>
+          <div className="flex items-center justify-center gap-6 lg:justify-end lg:gap-12 xl:gap-16">
+            {/* Upright throughout: the three-quarter turn read as an italic
+                slant mid-scroll and fought the card's own layout. It just
+                slides into the middle of the stage as the copy leaves. */}
+            <div
+              className="animate-phone-float relative"
+              style={{ transform: `translate3d(${-42 * turned}%, 0, 0)` }}
+            >
+              <span
+                className="animate-phone-float-shadow absolute -bottom-8 left-1/2 h-6 w-2/3 -translate-x-1/2 rounded-[50%] bg-navy-950/30 blur-2xl"
+                aria-hidden="true"
+              />
+              <PhoneFrame
+                // Narrower frame on small screens: the `md` body is 322px wide
+                // with its bezel, which overflows a 360px viewport once the
+                // page gutters are taken out.
+                scale={staged ? 'md' : 'sm'}
+                chrome
+                progress={staged ? play : undefined}
+                bodyStyle={{ transform: `scale(${1 + 0.06 * turned})` }}
+              >
+                <CardView card={card} interactive={false} />
+              </PhoneFrame>
             </div>
-            <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-              <ScanLine size={14} aria-hidden="true" />
-              Scan to open
-            </p>
+
+            {/* The QR belongs to the opening frame, not to the model. */}
+            <div
+              className="hidden animate-fade-up flex-col items-center sm:flex"
+              style={{ opacity: 1 - Math.min(1, turned * 1.6) }}
+            >
+              <div className="relative p-2.5">
+                <ScanCorners accent={card.accent} />
+                <Panel className="p-4">
+                  <QrCode value={`https://${SITE_DOMAIN}/${card.username}`} size={132} />
+                </Panel>
+              </div>
+              <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                <ScanLine size={14} aria-hidden="true" />
+                Scan to open
+              </p>
+            </div>
           </div>
         </div>
       </div>
