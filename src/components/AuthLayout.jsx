@@ -75,7 +75,7 @@ export function GoogleButton({ children = 'Continue with Google', onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex h-11 w-full items-center justify-center gap-2.5 rounded-md border border-slate-300 bg-white text-sm font-semibold text-navy-900 transition-colors hover:bg-slate-50"
+      className="flex h-12 w-full items-center justify-center gap-2.5 rounded-md border border-slate-300 bg-white text-sm font-semibold text-navy-900 transition-colors hover:bg-slate-50"
     >
       <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
         <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.6 9.5 24 9.5z" />

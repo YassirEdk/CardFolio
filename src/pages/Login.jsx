@@ -139,10 +139,6 @@ export default function Login() {
           Log in
         </Button>
       </form>
-
-      <p className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
-        <span className="font-semibold text-navy-900">Demo account:</span> john@doestudio.com / demo1234
-      </p>
     </AuthLayout>
   )
 }
