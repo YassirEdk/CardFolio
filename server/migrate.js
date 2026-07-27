@@ -31,12 +31,14 @@ const DEMO = [
     website: 'https://doestudio.com',
     template: 'executive',
     accent: '#2E6BE6',
+    // Demo links point at pages each platform really serves: John Doe is
+    // fictional, so a handle URL 404s and the site bounces you to its home.
     links: [
-      { platform: 'linkedin', url: 'https://linkedin.com/in/johndoe' },
-      { platform: 'dribbble', url: 'https://dribbble.com/johndoe' },
-      { platform: 'behance', url: 'https://behance.net/johndoe' },
-      { platform: 'instagram', url: 'https://instagram.com/johndoe.design' },
-      { platform: 'upwork', url: 'https://upwork.com/freelancers/~johndoe' },
+      { platform: 'linkedin', url: 'https://www.linkedin.com/feed/', label: 'LinkedIn' },
+      { platform: 'dribbble', url: 'https://dribbble.com/shots', label: 'Dribbble' },
+      { platform: 'behance', url: 'https://www.behance.net/galleries', label: 'Behance' },
+      { platform: 'instagram', url: 'https://www.instagram.com/explore/', label: 'Instagram' },
+      { platform: 'upwork', url: 'https://www.upwork.com/freelance-jobs/', label: 'Upwork' },
     ],
     events: { view: 2841, click: 962, scan: 418 },
   },
