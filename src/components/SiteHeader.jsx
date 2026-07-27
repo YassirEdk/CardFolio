@@ -7,18 +7,65 @@ import { useAuth } from '../lib/auth'
 // Listed in the order the sections actually appear on the page, so following
 // the nav top to bottom walks the page top to bottom.
 const NAV_LINKS = [
-  { label: 'Features', href: '/#features' },
-  { label: 'How it works', href: '/#how-it-works' },
-  { label: 'Templates', href: '/#templates' },
-  { label: 'Pricing', href: '/#pricing' },
+  { label: 'Features', id: 'features' },
+  { label: 'How it works', id: 'how-it-works' },
+  { label: 'Who it’s for', id: 'who-its-for' },
+  { label: 'Templates', id: 'templates' },
+  { label: 'Pricing', id: 'pricing' },
+  { label: 'FAQ', id: 'faq' },
 ]
+
+/**
+ * Which section is on screen, for the glow.
+ *
+ * An observer rather than scroll maths: the browser already knows what is
+ * visible, and the top band is discounted so a section counts as "current"
+ * once it is properly in view rather than as its first pixel appears.
+ */
+function useActiveSection(ids) {
+  const [active, setActive] = useState(null)
+
+  useEffect(() => {
+    const sections = ids.map((id) => document.getElementById(id)).filter(Boolean)
+    if (!sections.length) return
+
+    const visible = new Map()
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) visible.set(entry.target.id, entry.intersectionRatio)
+        const best = [...visible.entries()].sort((a, b) => b[1] - a[1])[0]
+        setActive(best && best[1] > 0 ? best[0] : null)
+      },
+      { rootMargin: '-20% 0px -55% 0px', threshold: [0, 0.25, 0.5, 1] }
+    )
+
+    sections.forEach((section) => observer.observe(section))
+    return () => observer.disconnect()
+  }, [ids])
+
+  return active
+}
+
+const SECTION_IDS = NAV_LINKS.map((link) => link.id)
 
 export default function SiteHeader() {
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [progress, setProgress] = useState(0)
   const location = useLocation()
+  const active = useActiveSection(SECTION_IDS)
   const { status, logout } = useAuth()
+
+  /**
+   * Scrolls without writing to the URL: these are positions on one page, not
+   * addresses, and "#pricing" left in the bar is a link that reopens the site
+   * half way down. `scroll-mt` on each section keeps the sticky header clear.
+   */
+  const goToSection = (id) => (event) => {
+    event.preventDefault()
+    setOpen(false)
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
   const signedIn = status === 'authenticated'
 
   useEffect(() => {
@@ -77,8 +124,13 @@ export default function SiteHeader() {
           {NAV_LINKS.map((link) => (
             <a
               key={link.label}
-              href={link.href}
-              className="group relative rounded-md px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-navy-900"
+              href={`#${link.id}`}
+              onClick={goToSection(link.id)}
+              aria-current={active === link.id ? 'true' : undefined}
+              className={cx(
+                'group relative rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                active === link.id ? 'nav-active font-semibold' : 'text-slate-600 hover:text-navy-900'
+              )}
             >
               {link.label}
               {/* Rule wipes out from the centre on hover. */}
@@ -134,8 +186,13 @@ export default function SiteHeader() {
             {NAV_LINKS.map((link) => (
               <a
                 key={link.label}
-                href={link.href}
-                className="rounded-md px-2 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                href={`#${link.id}`}
+                onClick={goToSection(link.id)}
+                aria-current={active === link.id ? 'true' : undefined}
+                className={cx(
+                  'rounded-md px-2 py-3 text-sm font-medium hover:bg-slate-50',
+                  active === link.id ? 'nav-active font-semibold' : 'text-slate-700'
+                )}
               >
                 {link.label}
               </a>

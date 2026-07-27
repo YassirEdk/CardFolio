@@ -157,6 +157,28 @@
   .animate-plan-in { animation: plan-in 0.32s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
 }
 
+/* ---------------------------------------------------------- active nav */
+/* The section you are in glows, and the glow cycles through the palette
+   rather than sitting on one colour. Slow — 8s for a full pass — so it reads
+   as a sheen on the label, not as a blinking light. */
+
+@keyframes chameleon {
+  0%   { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+
+.nav-active {
+  background-image: linear-gradient(92deg, #3b6bf5, #8b5cf6 45%, #22d3ee);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 18px rgba(99, 102, 241, 0.35);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nav-active { animation: chameleon 8s linear infinite; }
+}
+
 /* ------------------------------------------------------- floating phone */
 /* The dashboard previews hover rather than sit: a slow rise and fall, with a
    ground shadow that tightens as the phone lifts. Long and small on purpose —

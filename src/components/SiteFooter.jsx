@@ -51,6 +51,21 @@ const SOCIALS = [
   { label: 'CardFolio on GitHub', icon: Github },
 ]
 
+/**
+ * A "/#section" link scrolls instead of navigating, so the address bar keeps
+ * showing the site rather than a position within it — matching the header.
+ * Anything else (a real route like /demo) is left to the router.
+ */
+function sectionJump(to) {
+  return (event) => {
+    if (!to.startsWith('/#') || window.location.pathname !== '/') return
+    const target = document.getElementById(to.slice(2))
+    if (!target) return
+    event.preventDefault()
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
 export default function SiteFooter() {
   return (
     <footer className="border-t border-navy-800 bg-navy-900 text-slate-300">
@@ -81,7 +96,11 @@ export default function SiteFooter() {
               <ul className="mt-4 space-y-2.5">
                 {column.links.map((link) => (
                   <li key={link.label}>
-                    <Link to={link.to} className="text-sm text-slate-400 transition-colors hover:text-white">
+                    <Link
+                      to={link.to}
+                      onClick={sectionJump(link.to)}
+                      className="text-sm text-slate-400 transition-colors hover:text-white"
+                    >
                       {link.label}
                     </Link>
                   </li>

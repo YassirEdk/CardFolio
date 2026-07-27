@@ -195,6 +195,22 @@ function Hero() {
   const progress = staged ? rawProgress : 0
 
   /**
+   * Pointer parallax: the device leans a degree or two toward the cursor.
+   *
+   * Kept this small on purpose — the earlier fixed three-quarter turn read as
+   * an italic slant. A couple of degrees that track the pointer read as depth
+   * instead, because they respond to you.
+   */
+  const [lean, setLean] = useState({ x: 0, y: 0 })
+  const leanFrom = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setLean({
+      x: ((event.clientX - rect.left) / rect.width - 0.5) * 2,
+      y: ((event.clientY - rect.top) / rect.height - 0.5) * 2,
+    })
+  }
+
+  /**
    * Two acts on one scrollbar. The phone straightens and moves to the middle
    * of an emptying stage first; only once it is upright does the card start
    * playing through it, so the two motions read as cause and effect rather
@@ -207,6 +223,8 @@ function Hero() {
   const play = Math.min(1, Math.max(0, (progress - 0.35) / 0.55))
   const ease = (t) => 1 - Math.pow(1 - t, 3)
   const turned = ease(turn)
+
+
 
   // The hero fills the first screen and uses the full page width, rather than
   // sitting in the 1200px column the rest of the page is set in: it is the one
@@ -283,7 +301,9 @@ function Hero() {
                 slides into the middle of the stage as the copy leaves. */}
             <div
               className="animate-phone-float relative"
-              style={{ transform: `translate3d(${-42 * turned}%, 0, 0)` }}
+              style={{ transform: `translate3d(${-42 * turned}%, 0, 0)`, perspective: '1400px' }}
+              onPointerMove={staged ? leanFrom : undefined}
+              onPointerLeave={() => setLean({ x: 0, y: 0 })}
             >
               <span
                 className="animate-phone-float-shadow absolute -bottom-8 left-1/2 h-6 w-2/3 -translate-x-1/2 rounded-[50%] bg-navy-950/30 blur-2xl"
@@ -296,7 +316,12 @@ function Hero() {
                 scale={staged ? 'md' : 'sm'}
                 chrome
                 progress={staged ? play : undefined}
-                bodyStyle={{ transform: `scale(${1 + 0.06 * turned})` }}
+                bodyStyle={{
+                  transform: `rotateY(${lean.x * 2.5}deg) rotateX(${-lean.y * 2}deg) scale(${1 + 0.06 * turned})`,
+                  transformStyle: 'preserve-3d',
+                  transition: 'transform 220ms ease-out',
+                }}
+                glare={lean}
               >
                 <CardView card={card} interactive={false} />
               </PhoneFrame>

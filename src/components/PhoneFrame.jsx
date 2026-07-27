@@ -30,6 +30,12 @@ export default function PhoneFrame({
   progress,
   /** Extra transform on the device body, e.g. a scroll-driven rotation. */
   bodyStyle,
+  /**
+   * Pointer position as {x, y} in -1..1, used to slide a specular highlight
+   * across the glass. Real glass catches the light from wherever you are
+   * standing; a fixed sheen just looks like a gradient painted on.
+   */
+  glare,
 }) {
   // Widths track the iPhone X 375×812 ratio (≈0.462) so proportions stay honest.
   const sizes = {
@@ -173,7 +179,7 @@ export default function PhoneFrame({
               className="pointer-events-none absolute bottom-[1.5%] left-1/2 z-20 h-[4px] w-[36%] -translate-x-1/2 rounded-full bg-white/60 mix-blend-difference"
               aria-hidden="true"
             />
-            {/* Screen gloss */}
+            {/* Screen gloss, and a highlight that tracks the pointer. */}
             <span
               className="pointer-events-none absolute inset-0 z-10"
               style={{
@@ -182,6 +188,15 @@ export default function PhoneFrame({
               }}
               aria-hidden="true"
             />
+            {glare && (
+              <span
+                className="pointer-events-none absolute inset-0 z-10 transition-[background] duration-200"
+                style={{
+                  background: `radial-gradient(38% 30% at ${50 + glare.x * 45}% ${50 + glare.y * 45}%, rgba(255,255,255,0.22) 0%, transparent 70%)`,
+                }}
+                aria-hidden="true"
+              />
+            )}
           </>
         ) : (
           <div
