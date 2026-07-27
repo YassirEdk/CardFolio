@@ -362,15 +362,6 @@ export default function Onboarding() {
               </div>
             </form>
 
-            {/* Mobile preview — the desktop panel is sticky on the right. */}
-            <div className="mt-10 lg:hidden">
-              <h2 className="mb-4 text-sm font-semibold text-navy-900">Live preview</h2>
-              <div className="flex justify-center">
-                <PhoneFrame scale="sm">
-                  <CardView card={card} interactive={false} />
-                </PhoneFrame>
-              </div>
-            </div>
           </div>
 
           <aside className="hidden lg:block">

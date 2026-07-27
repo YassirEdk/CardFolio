@@ -55,13 +55,59 @@ import { photoSrc } from '../lib/image'
 import { ACCENT_COLORS } from '../data/platforms'
 
 const NAV = [
-  { to: '/dashboard', end: true, label: 'My Card', icon: CreditCard },
-  { to: '/dashboard/edit', label: 'Edit', icon: Pencil },
-  { to: '/dashboard/templates', label: 'Templates', icon: LayoutTemplate },
-  { to: '/dashboard/qr', label: 'QR Code', icon: QrCodeIcon },
+  { to: '/dashboard', end: true, label: 'My Card', icon: CreditCard, tab: true },
+  { to: '/dashboard/edit', label: 'Edit', icon: Pencil, tab: true },
+  { to: '/dashboard/templates', label: 'Templates', icon: LayoutTemplate, tab: true },
+  { to: '/dashboard/qr', label: 'QR Code', icon: QrCodeIcon, tab: true },
   { to: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/dashboard/settings', label: 'Settings', icon: SettingsIcon },
 ]
+
+/**
+ * The four everyday destinations, always on screen on a phone.
+ *
+ * `tab: true` above picks them; Analytics and Settings stay behind the menu
+ * button, because five or six tabs in a row stop being tappable. Fixed to the
+ * bottom, where a thumb already is, and padded for the home indicator.
+ */
+function MobileTabs() {
+  return (
+    <nav
+      aria-label="Sections"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+    >
+      <div className="grid grid-cols-4">
+        {NAV.filter((item) => item.tab).map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              cx(
+                'flex flex-col items-center gap-1 px-1 py-2.5 text-[11px] font-semibold transition-colors',
+                isActive ? 'text-accent-600' : 'text-slate-500'
+              )
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <span
+                  className={cx(
+                    'grid h-8 w-14 place-items-center rounded-md transition-colors',
+                    isActive ? 'bg-accent-50' : 'bg-transparent'
+                  )}
+                >
+                  <item.icon size={18} aria-hidden="true" />
+                </span>
+                {item.label}
+              </>
+            )}
+          </NavLink>
+        ))}
+      </div>
+    </nav>
+  )
+}
 
 /* ------------------------------------------------------------ shared bits */
 
@@ -355,7 +401,10 @@ function Overview({ card, publicUrl, analytics, pro }) {
 
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
         <div className="space-y-6">
-          <Panel className="p-6">
+          {/* Desktop only. On a phone the preview is a phone-sized picture of
+              a phone on a phone — it takes a whole screen to say nothing the
+              real card at your link doesn't say better. */}
+          <Panel className="hidden p-6 lg:block">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-navy-900">Your card</h2>
               <Badge tone="success">Published</Badge>
@@ -593,7 +642,7 @@ function EditCard({ card, setCard, pro }) {
           </div>
         </div>
 
-        <aside>
+        <aside className="hidden lg:block">
           <div className="sticky top-24">
             <h2 className="mb-4 text-sm font-semibold text-navy-900">Live preview</h2>
             <PhoneFrame scale="sm" className="mx-auto">
@@ -674,7 +723,7 @@ function TemplatesView({ card, setCard, pro }) {
             }}
           />
         </Panel>
-        <aside>
+        <aside className="hidden lg:block">
           {/* The old top inset lined this up with the template tiles, from
               before the toggle sat between the heading and the preview. With
               that in the way the column started well below the panel, so it
@@ -1406,7 +1455,9 @@ export default function Dashboard() {
           <div className="fixed inset-x-0 top-16 z-40 border-b border-slate-200 bg-white p-4 lg:hidden">{sidebar}</div>
         )}
 
-        <main className="min-w-0 flex-1 px-5 py-8 lg:px-8" key={location.pathname}>
+        {/* pb-28 on small screens: the tab bar is fixed, so the last thing on
+            the page would otherwise sit underneath it. */}
+        <main className="min-w-0 flex-1 px-5 pb-28 pt-8 lg:px-8 lg:pb-8" key={location.pathname}>
           <Routes>
             <Route index element={<Overview card={card} publicUrl={publicUrl} analytics={analytics} pro={pro} />} />
             <Route path="edit" element={<EditCard card={card} setCard={setCard} pro={pro} />} />
@@ -1427,6 +1478,8 @@ export default function Dashboard() {
           </Routes>
         </main>
       </div>
+
+      <MobileTabs />
 
       {showSkipNotice && <SkipNotice onClose={() => setShowSkipNotice(false)} />}
     </div>

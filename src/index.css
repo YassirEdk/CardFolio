@@ -42,6 +42,13 @@
   html {
     -webkit-font-smoothing: antialiased;
     scroll-behavior: smooth;
+    /* The page still scrolls; the bar itself is hidden. Firefox and the
+       WebKit/Blink rule below cover every browser this ships to. */
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none;
   }
   body {
     font-family: var(--font-sans);
