@@ -17,7 +17,6 @@ import {
   LogOut,
   Mail,
   Menu,
-  MousePointerClick,
   Pencil,
   QrCode as QrCodeIcon,
   ScanLine,
@@ -515,11 +514,11 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
               locked={!pro}
             />
             <StatCard
-              icon={MousePointerClick}
-              label="Link clicks"
-              value={analytics.stats.clicks}
-              values={statValues(analytics, 'clicks')}
-              delta={analytics.deltas?.clicks}
+              icon={LinkIcon}
+              label="Link opens"
+              value={analytics.stats.links}
+              values={statValues(analytics, 'links')}
+              delta={analytics.deltas?.links}
               locked={!pro}
             />
             <StatCard
@@ -998,11 +997,11 @@ function Analytics({ card, analytics, pro }) {
           delta={analytics.deltas?.views}
         />
         <StatCard
-          icon={MousePointerClick}
-          label="Link clicks"
-          value={analytics.stats.clicks}
-          values={statValues(analytics, 'clicks')}
-          delta={analytics.deltas?.clicks}
+          icon={LinkIcon}
+          label="Link opens"
+          value={analytics.stats.links}
+          values={statValues(analytics, 'links')}
+          delta={analytics.deltas?.links}
         />
         <StatCard
           icon={ScanLine}
@@ -1492,10 +1491,13 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
 
 /* ----------------------------------------------------------------- shell */
 
+/** How often the open dashboard re-reads its figures. */
+const POLL_MS = 15_000
+
 const EMPTY_ANALYTICS = {
-  stats: { views: 0, clicks: 0, scans: 0 },
+  stats: { views: 0, links: 0, clicks: 0, scans: 0 },
   ranges: null,
-  deltas: { views: null, clicks: null, scans: null },
+  deltas: { views: null, links: null, clicks: null, scans: null },
   series: [],
   topLinks: [],
 }
@@ -1524,16 +1526,44 @@ export default function Dashboard() {
   // Uploading a new portrait must clear a previous load failure.
   useEffect(() => setAvatarFailed(false), [card?.photo])
 
-  // Pull analytics once the session is known good.
+  /**
+   * Analytics, kept current while the dashboard is open.
+   *
+   * A scan or a click happens on someone else's phone, so nothing here can
+   * know about it — the figures have to be asked for again. Polled every
+   * `POLL_MS`, and immediately whenever the tab is brought back to the front,
+   * which is the moment you actually look at the numbers after testing a link.
+   *
+   * Only while the tab is visible: a dashboard left open in a background tab
+   * overnight should not spend the night talking to the server.
+   */
   useEffect(() => {
     if (status !== 'authenticated') return
     let active = true
-    api
-      .analytics()
-      .then((data) => active && setAnalytics(data))
-      .catch(() => {})
+
+    const load = () => {
+      api
+        .analytics()
+        .then((data) => active && setAnalytics(data))
+        .catch(() => {})
+    }
+
+    load()
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') load()
+    }, POLL_MS)
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+
     return () => {
       active = false
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
     }
   }, [status, location.pathname])
 

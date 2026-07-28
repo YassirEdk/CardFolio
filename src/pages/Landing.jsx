@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Link2,
@@ -104,6 +104,14 @@ const FAQS = [
 /* --------------------------------------------------------------- sections */
 
 /**
+ * Time constant of the scroll glide, in seconds: how long the stage takes to
+ * cover about two thirds of the distance to where the scrollbar says it should
+ * be. Higher is smoother and looser; too high and the phone visibly lags the
+ * page under it.
+ */
+const GLIDE_TAU = 0.14
+
+/**
  * Scroll progress through an element, 0 while its top is at the top of the
  * viewport and 1 once it has been scrolled past its own extra height.
  *
@@ -120,6 +128,9 @@ function useScrollProgress(ref) {
     let frame = 0
     let target = 0
     let current = 0
+    let last = 0
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     function read() {
       const rect = el.getBoundingClientRect()
@@ -131,19 +142,45 @@ function useScrollProgress(ref) {
      * Chase the target instead of jumping to it.
      *
      * A wheel arrives in coarse steps — often 100px at a time — and mapping
-     * those straight onto a transform makes the card lurch. Easing 18% of the
-     * remaining distance each frame turns the steps into motion, and the loop
-     * stops once it arrives so nothing runs while the page is still.
+     * those straight onto a transform makes the card lurch. Closing part of
+     * the remaining distance each frame turns the steps into motion, and the
+     * loop stops once it arrives so nothing runs while the page is still.
+     *
+     * The fraction is derived from the time since the last frame rather than
+     * being a constant: a fixed 18% per frame is a different speed on every
+     * display — twice as fast at 120Hz as at 60Hz, and faster still when a
+     * frame is dropped, which is exactly when the motion should hold its
+     * line. `1 - e^(-dt/TAU)` is the same glide on all of them.
+     *
+     * `dt` is capped so returning to a backgrounded tab eases in from where
+     * the animation was, instead of arriving in a single jump.
      */
-    function tick() {
+    function tick(now) {
+      const dt = Math.min(0.05, last ? (now - last) / 1000 : 1 / 60)
+      last = now
+
       const delta = target - current
-      current = Math.abs(delta) < 0.0005 ? target : current + delta * 0.18
+      const k = 1 - Math.exp(-dt / GLIDE_TAU)
+      current = Math.abs(delta) < 0.0005 ? target : current + delta * k
       setProgress(current)
-      frame = current === target ? 0 : requestAnimationFrame(tick)
+
+      if (current === target) {
+        frame = 0
+        last = 0
+      } else {
+        frame = requestAnimationFrame(tick)
+      }
     }
 
     function onScroll() {
       read()
+      // Reduced motion asks for less movement, not for a laggier version of
+      // it: follow the scrollbar exactly and run no animation loop at all.
+      if (reduceMotion) {
+        current = target
+        setProgress(target)
+        return
+      }
       if (!frame) frame = requestAnimationFrame(tick)
     }
 
@@ -216,13 +253,71 @@ function Hero() {
    * playing through it, so the two motions read as cause and effect rather
    * than as everything moving at once.
    */
-  const turn = Math.min(1, progress / 0.35)
-  // Finishes at 90%, not at the very end: the last stretch of the pin is a
-  // beat where nothing moves, so the card is not still travelling at the
-  // moment the page starts scrolling away underneath it.
-  const play = Math.min(1, Math.max(0, (progress - 0.35) / 0.55))
+  /**
+   * How far the phone must travel to sit in the middle of the screen.
+   *
+   * Measured rather than guessed: the column it rests in is sized in `fr`
+   * units against the copy beside it, so the distance to the centre is a
+   * different number at every window width — a fixed percentage lands it in
+   * the middle of one screen and off-centre on the next.
+   *
+   * The element's own applied shift is subtracted, so this reads its resting
+   * position no matter how far through the animation the page happens to be.
+   */
+  const phoneRef = useRef(null)
+  const appliedShift = useRef(0)
+  const [centerShift, setCenterShift] = useState(0)
+
+  useLayoutEffect(() => {
+    if (!staged) return setCenterShift(0)
+
+    const measure = () => {
+      const el = phoneRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const restCenter = rect.left + rect.width / 2 - appliedShift.current
+      setCenterShift(window.innerWidth / 2 - restCenter)
+    }
+
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [staged])
+
+  const clamp = (t) => Math.min(1, Math.max(0, t))
   const ease = (t) => 1 - Math.pow(1 - t, 3)
+  /** Eases in *and* out, so a motion neither starts nor stops abruptly. */
+  const smooth = (t) => t * t * (3 - 2 * t)
+
+  const turn = clamp(progress / 0.42)
+  /**
+   * The copy leaves on its own, shorter clock.
+   *
+   * Shorter than the phone's travel, so the stage is clear before the device
+   * finishes arriving — but measured against a runway three viewports tall,
+   * which is what keeps it from being a blink. The two motions overlap enough
+   * to read as one.
+   */
+  const faded = ease(clamp(progress / 0.24))
+  /**
+   * Finishes at 86%, not at the very end: the last stretch of the pin is a
+   * beat where the card is already still, so it is not braking at the moment
+   * the page starts scrolling away underneath it. Smoothstepped rather than
+   * linear — the card easing to a stop is what makes the last frame of the
+   * pin and the first frame of the page scroll read as one movement.
+   */
+  const play = smooth(clamp((progress - 0.42) / 0.44))
   const turned = ease(turn)
+
+  /**
+   * The hand-off. Over the final stretch of the runway the stage lifts and
+   * fades a little, so the pin releases into motion that is already underway
+   * instead of cutting from a held frame to a scrolling page.
+   */
+  const exit = smooth(clamp((progress - 0.86) / 0.14))
+
+  // What the phone is currently offset by, for the measurement above.
+  appliedShift.current = centerShift * turned
 
 
 
@@ -240,108 +335,169 @@ function Hero() {
       ref={stageRef}
       className={cx(
         'relative border-b border-slate-200 bg-white',
-        staged ? 'h-[220vh]' : 'min-h-[calc(100dvh-4rem)]'
+        /**
+         * `svh`, not `dvh`, off the stage. A phone's dynamic viewport grows as
+         * the address bar rolls away mid-scroll, and a centred hero taller than
+         * one screen then shifts under the finger that is scrolling it — which
+         * lands the tap next to the button instead of on it. The small viewport
+         * unit is the one height that does not move while you scroll.
+         */
+        staged ? 'h-[320vh]' : 'min-h-[calc(100svh-4rem)]'
       )}
     >
       <div
         className={cx(
-          'flex items-center overflow-hidden',
-          staged ? 'sticky top-0 h-dvh' : 'min-h-[calc(100dvh-4rem)] py-14'
+          'flex',
+          // Centred only where it fits: below lg the hero is taller than the
+          // screen, and centring overflow crops the top of it.
+          staged ? 'sticky top-0 h-dvh items-center overflow-hidden' : 'min-h-[calc(100svh-4rem)] items-center py-14'
         )}
       >
         <AnimatedBackdrop className="-z-10" />
 
-        <div className="mx-auto grid w-full max-w-[1600px] items-center gap-14 px-5 lg:grid-cols-[1.05fr_1fr] lg:px-12 xl:px-16">
-          {/* The copy clears out of the way as the phone takes the stage. */}
+        {/* The stage leaves under its own power over the last of the runway,
+            so the release of the pin lands mid-movement rather than on a
+            held frame. Off the stage `exit` is 0 and this is inert. */}
+        <div
+          className="mx-auto grid w-full max-w-[1600px] items-center gap-14 px-5 lg:grid-cols-[1.05fr_1fr] lg:px-12 xl:px-16"
+          style={
+            staged
+              ? {
+                  transform: `translate3d(0, ${-56 * exit}px, 0)`,
+                  opacity: 1 - 0.55 * exit,
+                  willChange: exit > 0 && exit < 1 ? 'transform, opacity' : undefined,
+                }
+              : undefined
+          }
+        >
+          {/**
+           * The copy clears out of the way as the phone takes the stage.
+           *
+           * Two elements, and they must stay two: a CSS animation wins over an
+           * inline style for the properties it animates, so the entrance
+           * animation and the scroll-driven opacity/transform cannot live on
+           * the same node — the entrance would hold this at "fully arrived"
+           * for good and the fade-out would never render. `pointer-events` is
+           * not animated, though, so it *would* still apply: the copy stayed
+           * visible while quietly refusing every click on the buttons.
+           *
+           * `relative z-10` keeps this column above the phone, which animates a
+           * transform and so paints in a stacking context of its own.
+           */}
           <div
-            className="animate-fade-up"
+            className="relative z-10"
             style={{
-              opacity: 1 - turned,
-              transform: `translate3d(${-40 * turned}px, 0, 0)`,
-              pointerEvents: turned > 0.6 ? 'none' : undefined,
+              opacity: 1 - faded,
+              transform: `translate3d(${-40 * faded}px, 0, 0)`,
+              // Promoted while it is moving only: a layer that never comes
+              // back costs memory on every later scroll for nothing.
+              willChange: staged && faded < 1 ? 'transform, opacity' : undefined,
+              // Only the pinned stage fades the copy out; below lg `faded` is
+              // pinned at 0, so the buttons stay live however far you scroll.
+              pointerEvents: faded > 0.6 ? 'none' : undefined,
             }}
           >
-            <Badge tone="accent">
-              <span className="h-1.5 w-1.5 rounded-md bg-accent-500" aria-hidden="true" />
-              Trusted by 12,000+ professionals
-            </Badge>
+            <div className="animate-fade-up">
+              <Badge tone="accent">
+                <span className="h-1.5 w-1.5 rounded-md bg-accent-500" aria-hidden="true" />
+                Trusted by 12,000+ professionals
+              </Badge>
 
-            <h1 className="mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-navy-900 text-balance sm:text-5xl lg:text-[3.4rem]">
-              Your business card should never run out.
-            </h1>
-            <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">
-              CardFolio turns your contact details, portfolio and social profiles into one professional digital card —
-              shared with a personal link or a QR code, updated in seconds, never reprinted.
-            </p>
+              <h1 className="mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-navy-900 text-balance sm:text-5xl lg:text-[3.4rem]">
+                Your business card should never run out.
+              </h1>
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">
+                CardFolio turns your contact details, portfolio and social profiles into one professional digital card —
+                shared with a personal link or a QR code, updated in seconds, never reprinted.
+              </p>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button as={Link} to="/signup" size="lg">
-                Create your free card
-                <ArrowRight size={17} aria-hidden="true" />
-              </Button>
-              <Button as={Link} to={`/${DEMO_USERNAME}`} variant="secondary" size="lg">
-                <Smartphone size={17} aria-hidden="true" />
-                See a live card
-              </Button>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Button as={Link} to="/signup" size="lg">
+                  Create your free card
+                  <ArrowRight size={17} aria-hidden="true" />
+                </Button>
+                <Button as={Link} to={`/${DEMO_USERNAME}`} variant="secondary" size="lg">
+                  <Smartphone size={17} aria-hidden="true" />
+                  See a live card
+                </Button>
+              </div>
+
+              <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
+                {['Free plan, no card required', 'Ready in under 3 minutes', 'Works on every phone'].map((item) => (
+                  <li key={item} className="inline-flex items-center gap-1.5">
+                    <Check size={15} className="text-accent-500" aria-hidden="true" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
             </div>
-
-            <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
-              {['Free plan, no card required', 'Ready in under 3 minutes', 'Works on every phone'].map((item) => (
-                <li key={item} className="inline-flex items-center gap-1.5">
-                  <Check size={15} className="text-accent-500" aria-hidden="true" />
-                  {item}
-                </li>
-              ))}
-            </ul>
           </div>
 
           <div className="flex items-center justify-center gap-6 lg:justify-end lg:gap-12 xl:gap-16">
             {/* Upright throughout: the three-quarter turn read as an italic
                 slant mid-scroll and fought the card's own layout. It just
-                slides into the middle of the stage as the copy leaves. */}
+                slides into the middle of the stage as the copy leaves.
+                The travel is on the outside and the float on the inside for
+                the same reason the copy is split in two — one transform per
+                element, or the animation swallows the other. */}
             <div
-              className="animate-phone-float relative"
-              style={{ transform: `translate3d(${-42 * turned}%, 0, 0)`, perspective: '1400px' }}
+              ref={phoneRef}
+              className="relative"
+              style={{
+                transform: `translate3d(${centerShift * turned}px, 0, 0)`,
+                perspective: '1400px',
+                willChange: staged && turned < 1 ? 'transform' : undefined,
+              }}
               onPointerMove={staged ? leanFrom : undefined}
               onPointerLeave={() => setLean({ x: 0, y: 0 })}
             >
-              <span
-                className="animate-phone-float-shadow absolute -bottom-8 left-1/2 h-6 w-2/3 -translate-x-1/2 rounded-[50%] bg-navy-950/30 blur-2xl"
-                aria-hidden="true"
-              />
-              <PhoneFrame
-                // Narrower frame on small screens: the `md` body is 322px wide
-                // with its bezel, which overflows a 360px viewport once the
-                // page gutters are taken out.
-                scale={staged ? 'md' : 'sm'}
-                chrome
-                progress={staged ? play : undefined}
-                bodyStyle={{
-                  transform: `rotateY(${lean.x * 2.5}deg) rotateX(${-lean.y * 2}deg) scale(${1 + 0.06 * turned})`,
-                  transformStyle: 'preserve-3d',
-                  transition: 'transform 220ms ease-out',
-                }}
-                glare={lean}
-              >
-                <CardView card={card} interactive={false} />
-              </PhoneFrame>
+              <div className="animate-phone-float relative">
+                <span
+                  className="animate-phone-float-shadow absolute -bottom-8 left-1/2 h-6 w-2/3 -translate-x-1/2 rounded-[50%] bg-navy-950/30 blur-2xl"
+                  aria-hidden="true"
+                />
+                <PhoneFrame
+                  // Narrower frame on small screens: the `md` body is 322px wide
+                  // with its bezel, which overflows a 360px viewport once the
+                  // page gutters are taken out.
+                  scale={staged ? 'md' : 'sm'}
+                  chrome
+                  progress={staged ? play : undefined}
+                  bodyStyle={{
+                    // Grows as it takes the stage: once it is the only thing
+                    // on screen it should read as the subject, not as the same
+                    // phone that was sitting in the corner a moment ago.
+                    transform: `rotateY(${lean.x * 2.5}deg) rotateX(${-lean.y * 2}deg) scale(${1 + 0.18 * turned})`,
+                    transformStyle: 'preserve-3d',
+                    transition: 'transform 220ms ease-out',
+                  }}
+                  glare={lean}
+                >
+                  <CardView card={card} interactive={false} />
+                </PhoneFrame>
+              </div>
             </div>
 
             {/* The QR belongs to the opening frame, not to the model. */}
             <div
-              className="hidden animate-fade-up flex-col items-center sm:flex"
-              style={{ opacity: 1 - Math.min(1, turned * 1.6) }}
+              className="hidden sm:block"
+              style={{
+                opacity: 1 - Math.min(1, faded * 1.6),
+                willChange: staged && faded < 1 ? 'opacity' : undefined,
+              }}
             >
-              <div className="relative p-2.5">
-                <ScanCorners accent={card.accent} />
-                <Panel className="p-4">
-                  <QrCode value={`https://${SITE_DOMAIN}/${card.username}`} size={132} />
-                </Panel>
+              <div className="animate-fade-up flex flex-col items-center">
+                <div className="relative p-2.5">
+                  <ScanCorners accent={card.accent} />
+                  <Panel className="p-4">
+                    <QrCode value={`https://${SITE_DOMAIN}/${card.username}`} size={132} />
+                  </Panel>
+                </div>
+                <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                  <ScanLine size={14} aria-hidden="true" />
+                  Scan to open
+                </p>
               </div>
-              <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-                <ScanLine size={14} aria-hidden="true" />
-                Scan to open
-              </p>
             </div>
           </div>
         </div>

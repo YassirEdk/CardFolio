@@ -637,12 +637,22 @@ app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
     `SELECT type, count(*)::int AS n FROM card_events WHERE card_id = $1 GROUP BY type`,
     [cardId]
   )
-  const stats = { views: 0, clicks: 0, scans: 0 }
+  /**
+   * Two of these are recorded, one is derived.
+   *
+   * A visit arrives one of two ways: someone scanned the QR (`scan`) or they
+   * opened the link (`view`). `views` is therefore every arrival — the
+   * headline figure — and `links` is the arrivals that were not scans. Kept
+   * as one subtraction here so the dashboard can never disagree with itself
+   * about what a view is.
+   */
+  const stats = { views: 0, links: 0, clicks: 0, scans: 0 }
   for (const row of totals) {
-    if (row.type === 'view') stats.views = row.n
+    if (row.type === 'view') stats.links = row.n
     if (row.type === 'click') stats.clicks = row.n
     if (row.type === 'scan') stats.scans = row.n
   }
+  stats.views = stats.links + stats.scans
 
   /**
    * The same three figures over three spans, so the dashboard tiles can switch
@@ -664,9 +674,9 @@ app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
     [cardId]
   )
 
-  const EMPTY_SPAN = { views: 0, clicks: 0, scans: 0 }
+  const EMPTY_SPAN = { views: 0, links: 0, clicks: 0, scans: 0 }
   const ranges = { day: { ...EMPTY_SPAN }, month: { ...EMPTY_SPAN }, total: { ...EMPTY_SPAN } }
-  const KEY = { view: 'views', click: 'clicks', scan: 'scans' }
+  const KEY = { view: 'links', click: 'clicks', scan: 'scans' }
   for (const row of spans) {
     const key = KEY[row.type]
     if (!key) continue
@@ -674,6 +684,7 @@ app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
     ranges.month[key] = row.month
     ranges.total[key] = row.total
   }
+  for (const span of Object.values(ranges)) span.views = span.links + span.scans
 
   /**
    * Analytics are a Pro feature, so a free account gets the shape of the
@@ -688,8 +699,8 @@ app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
   if ((account[0]?.plan || 'free') !== 'pro') {
     return res.json({
       limited: true,
-      stats: { views: null, clicks: null, scans: null },
-      deltas: { views: null, clicks: null, scans: null },
+      stats: { views: null, links: null, clicks: null, scans: null },
+      deltas: { views: null, links: null, clicks: null, scans: null },
       ranges: null,
       series: [],
       topLinks: [],
@@ -717,12 +728,22 @@ app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
     [cardId]
   )
 
-  const deltas = { views: null, clicks: null, scans: null }
+  const change = (recent, previous) =>
+    previous === 0 ? null : Math.round(((recent - previous) / previous) * 1000) / 10
+
+  const deltas = { views: null, links: null, clicks: null, scans: null }
+  const arrivals = { recent: 0, previous: 0 }
   for (const row of windows) {
     const key = KEY[row.type]
-    if (!key || row.previous === 0) continue
-    deltas[key] = Math.round(((row.recent - row.previous) / row.previous) * 1000) / 10
+    if (!key) continue
+    deltas[key] = change(row.recent, row.previous)
+    // Views is both kinds of arrival, so its trend is both kinds too.
+    if (row.type === 'view' || row.type === 'scan') {
+      arrivals.recent += row.recent
+      arrivals.previous += row.previous
+    }
   }
+  deltas.views = change(arrivals.recent, arrivals.previous)
 
   const { rows: series } = await query(
     `SELECT to_char(d.day, 'Mon DD') AS day,

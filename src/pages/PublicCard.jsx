@@ -126,6 +126,39 @@ export default function PublicCard() {
     return () => meta.remove()
   }, [state.card])
 
+  /**
+   * Records a link click, whichever template drew the link.
+   *
+   * Every template renders its own markup, so asking each one to report its
+   * taps would mean the same three lines in ten files — and a new template
+   * would silently stop counting. One capturing listener on the wrapper sees
+   * every anchor inside instead.
+   *
+   * Only outbound links count: the credit in the footer points home, and
+   * counting that as interest in the card would be a lie. A social link is
+   * matched back to its row so the "top links" table has something to rank;
+   * a phone or email tap has no row, and is counted as a click with no link.
+   */
+  function trackClick(event) {
+    const anchor = event.target.closest?.('a[href]')
+    if (!anchor || !state.card) return
+
+    const href = anchor.getAttribute('href') || ''
+    if (!href || href.startsWith('#')) return
+
+    // Same-origin means app navigation, not a link off the card. `tel:` and
+    // `mailto:` parse with a null origin, so they pass — which is right, a
+    // tapped phone number is a click on the card.
+    try {
+      if (new URL(href, window.location.href).origin === window.location.origin) return
+    } catch {
+      return
+    }
+
+    const match = (state.card.links || []).find((link) => link.url && link.url === href)
+    api.track(username, 'click', match?.id)
+  }
+
   if (state.status === 'loading') {
     return (
       <div className="min-h-dvh bg-slate-100">
@@ -145,7 +178,7 @@ export default function PublicCard() {
   const isDemo = String(username).toLowerCase() === DEMO_USERNAME
 
   return (
-    <div className="min-h-dvh bg-slate-100">
+    <div className="min-h-dvh bg-slate-100" onClickCapture={trackClick}>
       {/* The toggle is a showcase control, so it rides on the demo card only:
           a real card should look like a card, not like a preview with chrome
           on it. It also needs a wide screen — on a phone there is no room for
