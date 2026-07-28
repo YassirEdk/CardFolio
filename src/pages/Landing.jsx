@@ -200,20 +200,21 @@ function useScrollProgress(ref) {
   return progress
 }
 
-/** True on screens wide enough for the scroll stage — see Hero. */
-function useWideScreen() {
-  const [wide, setWide] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+/** Live answer to a media query, for layout decisions CSS can't express. */
+function useMedia(query) {
+  const [matches, setMatches] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches
   )
 
   useEffect(() => {
-    const query = window.matchMedia('(min-width: 1024px)')
-    const onChange = (event) => setWide(event.matches)
-    query.addEventListener('change', onChange)
-    return () => query.removeEventListener('change', onChange)
-  }, [])
+    const list = window.matchMedia(query)
+    const onChange = (event) => setMatches(event.matches)
+    setMatches(list.matches)
+    list.addEventListener('change', onChange)
+    return () => list.removeEventListener('change', onChange)
+  }, [query])
 
-  return wide
+  return matches
 }
 
 function Hero() {
@@ -228,7 +229,24 @@ function Hero() {
    * screens of animation before reaching the first section. Below lg the hero
    * is a plain hero: everything visible, nothing pinned.
    */
-  const staged = useWideScreen()
+  const staged = useMedia('(min-width: 1024px)')
+
+  /**
+   * The frame size, picked for legibility rather than for looks.
+   *
+   * Cards are laid out at a 375px design width and scaled to fit the screen
+   * they are shown in, so a small frame is a downscaled card: at the 300px
+   * `md` screen every glyph renders at 80% of the size it was drawn for, which
+   * is exactly the soft, slightly muddy text this is fixing. The largest frame
+   * that still fits the viewport is therefore the sharpest one — `xl` is 96%
+   * of design size, near enough 1:1.
+   *
+   * Height is the constraint, not width: the `xl` body stands ~806px tall and
+   * has to sit inside a pinned screen without being clipped.
+   */
+  const tallViewport = useMedia('(min-height: 900px)')
+  const roomyPhone = useMedia('(min-width: 400px)')
+  const frameScale = staged ? (tallViewport ? 'xl' : 'lg') : roomyPhone ? 'md' : 'sm'
   const progress = staged ? rawProgress : 0
 
   /**
@@ -282,7 +300,8 @@ function Hero() {
     measure()
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [staged])
+    // `frameScale` too: a different frame is a different resting position.
+  }, [staged, frameScale])
 
   const clamp = (t) => Math.min(1, Math.max(0, t))
   const ease = (t) => 1 - Math.pow(1 - t, 3)
@@ -315,6 +334,28 @@ function Hero() {
    * instead of cutting from a held frame to a scrolling page.
    */
   const exit = smooth(clamp((progress - 0.86) / 0.14))
+
+  /**
+   * The device starts smaller and reaches full size as it takes the stage.
+   *
+   * It grows *into* 1, rather than past it: this scales a composited layer, so
+   * anything above 1 enlarges the card instead of redrawing it and costs
+   * sharpness. Ending at exactly 1 means the state you actually read the card
+   * in — centred, alone on screen — is the one rendered at full resolution,
+   * and the small opening state is the only one paying for the effect.
+   */
+  const bodyScale = staged ? 0.78 + 0.22 * turned : 1
+
+  /**
+   * How far from square the device still is: 1 in the opening frame, 0 once it
+   * has taken the stage.
+   *
+   * Held at a slight angle to start with — enough to show the rail and read as
+   * an object on a table, not enough to skew the display — and square by the
+   * time it reaches the middle, which is where it is meant to be read. Kept
+   * off the phone layout, where there is no travel to straighten out of.
+   */
+  const rest = staged ? 1 - turned : 0
 
   // What the phone is currently offset by, for the measurement above.
   appliedShift.current = centerShift * turned
@@ -445,7 +486,7 @@ function Hero() {
               className="relative"
               style={{
                 transform: `translate3d(${centerShift * turned}px, 0, 0)`,
-                perspective: '1400px',
+                perspective: '900px',
                 willChange: staged && turned < 1 ? 'transform' : undefined,
               }}
               onPointerMove={staged ? leanFrom : undefined}
@@ -457,17 +498,30 @@ function Hero() {
                   aria-hidden="true"
                 />
                 <PhoneFrame
-                  // Narrower frame on small screens: the `md` body is 322px wide
-                  // with its bezel, which overflows a 360px viewport once the
-                  // page gutters are taken out.
-                  scale={staged ? 'md' : 'sm'}
+                  scale={frameScale}
+                  solid={staged}
                   chrome
                   progress={staged ? play : undefined}
                   bodyStyle={{
-                    // Grows as it takes the stage: once it is the only thing
-                    // on screen it should read as the subject, not as the same
-                    // phone that was sitting in the corner a moment ago.
-                    transform: `rotateY(${lean.x * 2.5}deg) rotateX(${-lean.y * 2}deg) scale(${1 + 0.18 * turned})`,
+                    // The opening lean and the pointer lean are added, not
+                    // chosen between: the device answers the cursor the whole
+                    // way through, it just does it from a tilted rest pose at
+                    // the start and a square one at the end.
+                    /**
+                     * One axis for the opening pose: the vertical one.
+                     *
+                     * Stacking a tip-back and a roll on top of the turn puts
+                     * the axis on a diagonal, and a flat panel rotated about a
+                     * diagonal reads as twisted — top-right going back while
+                     * bottom-right comes forward. Turning about Y alone swings
+                     * it like a door: one edge back, the other forward, the
+                     * same the whole height of the device.
+                     */
+                    transform: [
+                      `rotateY(${-9 * rest + lean.x * 2}deg)`,
+                      `rotateX(${-lean.y * 1.4}deg)`,
+                      `scale(${bodyScale})`,
+                    ].join(' '),
                     transformStyle: 'preserve-3d',
                     transition: 'transform 220ms ease-out',
                   }}
@@ -825,13 +879,7 @@ function FinalCta() {
             Create your free card
             <ArrowRight size={17} aria-hidden="true" />
           </Button>
-          <Button
-            as={Link}
-            to={`/${DEMO_USERNAME}`}
-            size="lg"
-            variant="ghost"
-            className="border-navy-700 text-slate-200 hover:bg-navy-800 hover:text-white"
-          >
+          <Button as={Link} to={`/${DEMO_USERNAME}`} size="lg" variant="ghostOnDark">
             View the demo
           </Button>
         </div>

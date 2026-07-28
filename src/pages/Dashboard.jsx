@@ -1186,7 +1186,10 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
           — and the two in a row are the same height. Source order is therefore
           left, right, left, right, which is also the order they stack in on a
           phone. */}
-      <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
+      {/* No width cap: the panels run to the edge of the content column like
+          every other page in the dashboard, rather than stopping short and
+          leaving a band of empty page beside them. */}
+      <div className="grid gap-6 lg:grid-cols-2">
         <Panel className="p-6">
           <PanelHeader
             icon={LinkIcon}
@@ -1233,7 +1236,10 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               >
                 {/* The origin is fixed; only the handle after the slash is
                     yours to set. On localhost that reads "localhost:5173/". */}
-                <span className="select-none border-r border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500">
+                <span
+                  title={`${SITE_DOMAIN}/`}
+                  className="select-none truncate border-r border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500"
+                >
                   {SITE_DOMAIN}/
                 </span>
                 <input
@@ -1242,7 +1248,11 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
                   readOnly={!pro}
                   onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                   className={cx(
-                    'h-full min-w-0 flex-1 px-3 text-sm focus:outline-none',
+                    // A min-width the flexbox has to honour: the origin beside
+                    // it can be as long as card-folio-hazel.vercel.app, and
+                    // without a floor the handle gets squeezed to a few
+                    // characters — the one part of the field you are editing.
+                    'h-full min-w-[7rem] flex-1 px-3 text-sm focus:outline-none',
                     pro ? 'text-navy-900' : 'cursor-not-allowed text-slate-500'
                   )}
                 />

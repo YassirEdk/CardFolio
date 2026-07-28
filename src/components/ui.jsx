@@ -16,6 +16,14 @@ const BUTTON_VARIANTS = {
   secondary:
     'bg-white text-navy-900 border border-slate-300 hover:bg-slate-50 hover:border-slate-400 shadow-sm',
   ghost: 'bg-transparent text-slate-600 border border-transparent hover:bg-slate-100 hover:text-navy-900',
+  /**
+   * The quiet button on a navy section. A variant rather than utilities passed
+   * to `ghost`: both set the same properties, and which one wins is decided by
+   * the order Tailwind emits them, not by the order they are written here —
+   * which is how this button ended up near-invisible against the dark panel.
+   */
+  ghostOnDark:
+    'bg-transparent text-white border border-white/35 hover:bg-white/10 hover:border-white/60 shadow-sm',
   danger: 'bg-red-600 text-white hover:bg-red-700 border border-transparent shadow-sm',
   dangerOutline: 'bg-white text-red-600 border border-red-300 hover:bg-red-50',
 }
