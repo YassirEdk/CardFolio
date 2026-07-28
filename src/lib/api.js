@@ -125,10 +125,17 @@ export const api = {
   updateCard: (patch) => request('/me/card', { method: 'PUT', body: patch, auth: true }).then((r) => r.card),
   analytics: () => request('/me/analytics', { auth: true }),
 
-  /** Fire-and-forget: analytics must never break the page. */
+  /**
+   * Fire-and-forget: analytics must never break the page.
+   *
+   * `auth: true` attaches the session when there is one — visitors are still
+   * anonymous, but it lets the server recognise the owner of the card and drop
+   * the event. Your own previews and link tests shouldn't move your numbers.
+   */
   track: (username, type, linkId) =>
     request(`/cards/${encodeURIComponent(username)}/events`, {
       method: 'POST',
       body: { type, linkId },
+      auth: true,
     }).catch(() => {}),
 }

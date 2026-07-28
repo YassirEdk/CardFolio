@@ -3,22 +3,29 @@ import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from
 import {
   BarChart3,
   Check,
+  ChevronDown,
   Copy,
   CreditCard,
   Download,
   ExternalLink,
   Eye,
+  KeyRound,
   LayoutTemplate,
+  Link as LinkIcon,
   Loader2,
   Lock,
   LogOut,
+  Mail,
   Menu,
   MousePointerClick,
   Pencil,
   QrCode as QrCodeIcon,
   ScanLine,
   Settings as SettingsIcon,
+  SlidersHorizontal,
   Sparkles,
+  Trash2,
+  TrendingDown,
   TrendingUp,
   X,
 } from 'lucide-react'
@@ -123,15 +130,48 @@ function PageHeader({ title, description, actions }) {
   )
 }
 
+/** The spans a stat tile can be read over. `total` is every event ever. */
+const STAT_RANGES = [
+  { id: 'day', label: 'Today', short: 'Today' },
+  { id: 'month', label: 'This month', short: 'Month' },
+  { id: 'total', label: 'All time', short: 'All time' },
+]
+
+/**
+ * Pulls one stat out of every span, in the shape StatCard's `values` wants.
+ * Undefined when the API sent no ranges — a free account, or an older payload
+ * — and the tile then shows its all-time figure with no picker.
+ */
+function statValues(analytics, key) {
+  const ranges = analytics.ranges
+  if (!ranges) return undefined
+  return { day: ranges.day[key], month: ranges.month[key], total: ranges.total[key] }
+}
+
 /**
  * `locked` hides the figure behind a blur and a Pro chip. The blurred glyphs
  * are placeholder dots, never a real or invented number: the API sends nothing
  * for a locked stat, so there is no figure to leak through the blur.
+ *
+ * `values` carries the same stat over each span — pass it and the tile grows a
+ * range picker in the corner. Without it the tile shows `value` and no picker,
+ * which is what a locked (free) tile wants.
  */
-function StatCard({ icon: Icon, label, value, delta, locked = false }) {
+function StatCard({ icon: Icon, label, value, values, delta, locked = false }) {
+  const [range, setRange] = useState('total')
+  const filterable = Boolean(values) && !locked
+  const shown = filterable ? values[range] : value
+
+  // Only a real measurement earns the arrow: the API sends null when the week
+  // before saw nothing, and there is no trend to draw from no history. It
+  // describes the last seven days, so it belongs to the all-time reading only.
+  const trend = typeof delta === 'number' && Number.isFinite(delta) ? delta : null
+  const showTrend = trend !== null && (!filterable || range === 'total')
+  const up = trend !== null && trend >= 0
+
   return (
     <Panel className="p-5">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
         <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 text-slate-600" aria-hidden="true">
           <Icon size={17} />
         </span>
@@ -141,11 +181,28 @@ function StatCard({ icon: Icon, label, value, delta, locked = false }) {
             Pro
           </Badge>
         ) : (
-          delta && (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
-              <TrendingUp size={13} aria-hidden="true" />
-              {delta}
-            </span>
+          filterable && (
+            <div className="relative shrink-0">
+              {/* A native select: it is one tap on a phone, keyboard-operable
+                  for free, and three buttons would crowd a tile this size. */}
+              <select
+                value={range}
+                onChange={(e) => setRange(e.target.value)}
+                aria-label={`${label} — time range`}
+                className="h-7 cursor-pointer appearance-none rounded-md border border-slate-200 bg-white pl-2.5 pr-6 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:text-navy-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40"
+              >
+                {STAT_RANGES.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.short}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={13}
+                aria-hidden="true"
+                className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+            </div>
           )
         )}
       </div>
@@ -155,10 +212,32 @@ function StatCard({ icon: Icon, label, value, delta, locked = false }) {
           ••••
         </p>
       ) : (
-        <p className="mt-4 text-2xl font-bold tracking-tight text-navy-900">{(value || 0).toLocaleString()}</p>
+        <p className="mt-4 flex items-baseline gap-2 text-2xl font-bold tracking-tight text-navy-900">
+          {(shown || 0).toLocaleString()}
+          {showTrend && (
+            <span
+              title="Compared with the seven days before"
+              className={cx(
+                'inline-flex items-center gap-0.5 text-xs font-semibold',
+                up ? 'text-emerald-600' : 'text-red-600'
+              )}
+            >
+              {up ? <TrendingUp size={13} aria-hidden="true" /> : <TrendingDown size={13} aria-hidden="true" />}
+              {up ? '+' : ''}
+              {trend}%
+              <span className="sr-only"> versus the previous seven days</span>
+            </span>
+          )}
+        </p>
       )}
       <p className="mt-0.5 text-sm text-slate-500">
         {label}
+        {filterable && range !== 'total' && (
+          <span className="text-slate-400">
+            {' · '}
+            {STAT_RANGES.find((option) => option.id === range).label.toLowerCase()}
+          </span>
+        )}
         {locked && <span className="sr-only"> — available on the Pro plan</span>}
       </p>
     </Panel>
@@ -373,7 +452,7 @@ function TrafficChart({ series, compact = false }) {
 
 /* ---------------------------------------------------------------- views */
 
-function Overview({ card, publicUrl, analytics, pro }) {
+function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
   return (
     <>
       <PageHeader
@@ -431,21 +510,24 @@ function Overview({ card, publicUrl, analytics, pro }) {
               icon={Eye}
               label="Card views"
               value={analytics.stats.views}
-              delta={pro ? '+12.4%' : undefined}
+              values={statValues(analytics, 'views')}
+              delta={analytics.deltas?.views}
               locked={!pro}
             />
             <StatCard
               icon={MousePointerClick}
               label="Link clicks"
               value={analytics.stats.clicks}
-              delta={pro ? '+8.1%' : undefined}
+              values={statValues(analytics, 'clicks')}
+              delta={analytics.deltas?.clicks}
               locked={!pro}
             />
             <StatCard
               icon={ScanLine}
               label="QR scans"
               value={analytics.stats.scans}
-              delta={pro ? '+21.7%' : undefined}
+              values={statValues(analytics, 'scans')}
+              delta={analytics.deltas?.scans}
               locked={!pro}
             />
           </div>
@@ -485,19 +567,19 @@ function Overview({ card, publicUrl, analytics, pro }) {
             <p className="mb-4 mt-1 text-sm text-slate-500">Print-ready in raster or vector.</p>
             <div className="flex flex-col items-center gap-5 sm:flex-row">
               <div className="rounded-md border border-slate-200 p-3">
-                <QrCode value={publicUrl} size={128} color={card.accent} />
+                <QrCode value={qrUrl} size={128} color={card.accent} />
               </div>
               <div className="flex w-full flex-col gap-2.5 sm:w-auto">
                 <Button
                   variant="secondary"
-                  onClick={() => downloadPng(publicUrl, `${card.username}-qr.png`, card.accent)}
+                  onClick={() => downloadPng(qrUrl, `${card.username}-qr.png`, card.accent)}
                 >
                   <Download size={15} aria-hidden="true" />
                   Download PNG
                 </Button>
                 <Button
                   variant="secondary"
-                  onClick={() => downloadSvg(publicUrl, `${card.username}-qr.svg`, card.accent)}
+                  onClick={() => downloadSvg(qrUrl, `${card.username}-qr.svg`, card.accent)}
                 >
                   <Download size={15} aria-hidden="true" />
                   Download SVG
@@ -750,7 +832,7 @@ function TemplatesView({ card, setCard, pro }) {
   )
 }
 
-function QrView({ card, publicUrl }) {
+function QrView({ card, publicUrl, qrUrl }) {
   const [color, setColor] = useState(card.accent || '#0F2544')
 
   return (
@@ -763,7 +845,7 @@ function QrView({ card, publicUrl }) {
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel className="flex flex-col items-center p-8">
           <div className="rounded-md border border-slate-200 p-5">
-            <QrCode value={publicUrl} size={220} color={color} />
+            <QrCode value={qrUrl} size={220} color={color} />
           </div>
           <p className="mt-5 text-sm font-medium text-navy-900">{publicUrl}</p>
           <p className="mt-1 text-xs text-slate-500">Error correction level M · scannable from ~1.5m at A5 size</p>
@@ -799,11 +881,11 @@ function QrView({ card, publicUrl }) {
               PNG for screens and slides, SVG for anything printed.
             </p>
             <div className="grid gap-2.5 sm:grid-cols-2">
-              <Button variant="secondary" onClick={() => downloadPng(publicUrl, `${card.username}-qr.png`, color)}>
+              <Button variant="secondary" onClick={() => downloadPng(qrUrl, `${card.username}-qr.png`, color)}>
                 <Download size={15} aria-hidden="true" />
                 PNG · 1024px
               </Button>
-              <Button variant="secondary" onClick={() => downloadSvg(publicUrl, `${card.username}-qr.svg`, color)}>
+              <Button variant="secondary" onClick={() => downloadSvg(qrUrl, `${card.username}-qr.svg`, color)}>
                 <Download size={15} aria-hidden="true" />
                 SVG · vector
               </Button>
@@ -908,9 +990,27 @@ function Analytics({ card, analytics, pro }) {
       <PageHeader title="Analytics" description="How people are finding and using your card." />
 
       <div className="grid gap-6 sm:grid-cols-3">
-        <StatCard icon={Eye} label="Card views" value={analytics.stats.views} delta="+12.4%" />
-        <StatCard icon={MousePointerClick} label="Link clicks" value={analytics.stats.clicks} delta="+8.1%" />
-        <StatCard icon={ScanLine} label="QR scans" value={analytics.stats.scans} delta="+21.7%" />
+        <StatCard
+          icon={Eye}
+          label="Card views"
+          value={analytics.stats.views}
+          values={statValues(analytics, 'views')}
+          delta={analytics.deltas?.views}
+        />
+        <StatCard
+          icon={MousePointerClick}
+          label="Link clicks"
+          value={analytics.stats.clicks}
+          values={statValues(analytics, 'clicks')}
+          delta={analytics.deltas?.clicks}
+        />
+        <StatCard
+          icon={ScanLine}
+          label="QR scans"
+          value={analytics.stats.scans}
+          values={statValues(analytics, 'scans')}
+          delta={analytics.deltas?.scans}
+        />
       </div>
 
       <Panel className="mt-6 p-6">
@@ -970,10 +1070,37 @@ function suggestFor(base) {
   return [`${stem}-1`, `${stem}2`, `${stem}-${Math.random().toString(36).slice(2, 5)}`]
 }
 
+/**
+ * One header for every settings panel: an icon chip, a title, the sentence
+ * that explains what the panel changes, and room for a Pro badge. Written once
+ * so six panels cannot drift apart by a few pixels each.
+ */
+function PanelHeader({ icon: Icon, title, description, tone = 'slate', badge, className = 'mb-5' }) {
+  return (
+    <div className={cx('flex items-start gap-3', className)}>
+      <span
+        className={cx(
+          'grid h-9 w-9 shrink-0 place-items-center rounded-md',
+          tone === 'red' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'
+        )}
+        aria-hidden="true"
+      >
+        <Icon size={17} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h2 className={cx('text-sm font-semibold', tone === 'red' ? 'text-red-700' : 'text-navy-900')}>
+          {title}
+        </h2>
+        <p className="mt-0.5 text-sm text-slate-500">{description}</p>
+      </div>
+      {badge}
+    </div>
+  )
+}
+
 function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount }) {
   const toast = useToast()
   const navigate = useNavigate()
-  const [deleting, setDeleting] = useState(false)
   const [username, setUsername] = useState(card.username)
   // 'current' | 'invalid' | 'checking' | 'available' | 'taken'
   const [urlState, setUrlState] = useState('current')
@@ -1020,7 +1147,11 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
   const [upgrading, setUpgrading] = useState(false)
   const [email, setEmail] = useState(card.email || '')
   const [passwords, setPasswords] = useState({ current: '', next: '' })
+  // Deleting an account is two deliberate steps: the confirmation field only
+  // appears once `armed` is set, so the input is never one stray click away.
+  const [armed, setArmed] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   /**
    * The preferences are stored, not local: two live on the card, one on the
@@ -1049,22 +1180,32 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
     <>
       <PageHeader title="Settings" description="Account, URL and privacy preferences." />
 
-      <div className="max-w-2xl space-y-6">
+      {/* Two columns on wide screens: the card's public identity on the left,
+          the account and its preferences on the right. The panels are direct
+          grid children rather than two stacked columns, so each pair shares a
+          row — Card URL beside Account email, Password beside Card preferences
+          — and the two in a row are the same height. Source order is therefore
+          left, right, left, right, which is also the order they stack in on a
+          phone. */}
+      <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
         <Panel className="p-6">
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="text-sm font-semibold text-navy-900">Card URL</h2>
-            {!pro && (
-              <Badge tone="slate">
-                <Lock size={12} aria-hidden="true" />
-                Pro
-              </Badge>
-            )}
-          </div>
-          <p className="mb-4 mt-1 text-sm text-slate-500">
-            {pro
-              ? 'Changing this breaks any QR code or link you have already shared.'
-              : 'We picked this from your email. Choosing your own is part of the Pro plan.'}
-          </p>
+          <PanelHeader
+            icon={LinkIcon}
+            title="Card URL"
+            description={
+              pro
+                ? 'Changing this breaks any QR code or link you have already shared.'
+                : 'We picked this for you. Choosing your own is part of the Pro plan.'
+            }
+            badge={
+              !pro && (
+                <Badge tone="slate">
+                  <Lock size={12} aria-hidden="true" />
+                  Pro
+                </Badge>
+              )
+            }
+          />
           <form
             className="flex flex-col gap-2.5 sm:flex-row sm:items-end"
             onSubmit={async (e) => {
@@ -1079,7 +1220,9 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               }
             }}
           >
-            <Field label="Username" htmlFor="settings-username" className="flex-1">
+            {/* min-w-0: without it the prefix + input refuse to shrink below
+                their content width and push the button out of the panel. */}
+            <Field label="Username" htmlFor="settings-username" className="min-w-0 flex-1">
               <div
                 className={cx(
                   'flex h-11 items-center overflow-hidden rounded-md border bg-white focus-within:ring-2 focus-within:ring-accent-500/25',
@@ -1117,13 +1260,13 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               <Button
                 type="submit"
                 variant="secondary"
-                className="sm:mb-0"
+                className="shrink-0"
                 disabled={urlState !== 'available'}
               >
                 Update URL
               </Button>
             ) : (
-              <Button type="submit" className="sm:mb-0">
+              <Button type="submit" className="shrink-0">
                 <Sparkles size={15} aria-hidden="true" />
                 Go Pro
               </Button>
@@ -1135,7 +1278,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               {urlState === 'checking' && <span className="text-slate-500">Checking availability…</span>}
               {urlState === 'available' && (
                 <span className="text-emerald-600">
-                  {SITE_DOMAIN}/{username} is free
+                  {SITE_DOMAIN}/{username} is available for you
                 </span>
               )}
               {urlState === 'invalid' && (
@@ -1173,8 +1316,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
         </Panel>
 
         <Panel className="p-6">
-          <h2 className="text-sm font-semibold text-navy-900">Account email</h2>
-          <p className="mb-4 mt-1 text-sm text-slate-500">Used for login and notifications.</p>
+          <PanelHeader icon={Mail} title="Account email" description="Used for login and notifications." />
           <form
             className="flex flex-col gap-2.5 sm:flex-row sm:items-end"
             onSubmit={(e) => {
@@ -1182,18 +1324,17 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               toast('Confirmation email sent')
             }}
           >
-            <Field label="Email address" htmlFor="settings-email" className="flex-1">
+            <Field label="Email address" htmlFor="settings-email" className="min-w-0 flex-1">
               <Input id="settings-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </Field>
-            <Button type="submit" variant="secondary">
+            <Button type="submit" variant="secondary" className="shrink-0">
               Save email
             </Button>
           </form>
         </Panel>
 
         <Panel className="p-6">
-          <h2 className="text-sm font-semibold text-navy-900">Password</h2>
-          <p className="mb-4 mt-1 text-sm text-slate-500">Use at least 8 characters.</p>
+          <PanelHeader icon={KeyRound} title="Password" description="Use at least 8 characters." />
           <form
             className="space-y-4"
             onSubmit={(e) => {
@@ -1229,15 +1370,20 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
         {/* The whole panel is Pro. Each switch stays visible so a free account
             can see what the plan buys, but none of them can be moved. */}
         <Panel className="space-y-5 p-6">
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="text-sm font-semibold text-navy-900">Card preferences</h2>
-            {!pro && (
-              <Badge tone="slate">
-                <Lock size={12} aria-hidden="true" />
-                Pro
-              </Badge>
-            )}
-          </div>
+          <PanelHeader
+            icon={SlidersHorizontal}
+            title="Card preferences"
+            description="Branding, search engines and the weekly summary."
+            className=""
+            badge={
+              !pro && (
+                <Badge tone="slate">
+                  <Lock size={12} aria-hidden="true" />
+                  Pro
+                </Badge>
+              )
+            }
+          />
           <Switch
             checked={Boolean(card.hideBranding)}
             onChange={(value) =>
@@ -1275,13 +1421,18 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
           />
         </Panel>
 
-        <Panel className="border-red-200! p-6">
-          <h2 className="text-sm font-semibold text-red-700">Delete account</h2>
-          <p className="mb-4 mt-1 text-sm text-slate-600">
-            This permanently removes your card, your username and all analytics. It cannot be undone.
-          </p>
+        {/* Full width, and last: the one action on this page that cannot be
+          undone should never sit beside a field someone is tabbing through. */}
+        <Panel className="border-red-200! p-6 lg:col-span-2">
+        <PanelHeader
+          icon={Trash2}
+          tone="red"
+          title="Delete account"
+          description="Permanently removes your card, your username and all analytics. This cannot be undone."
+        />
+        {armed ? (
           <form
-            className="space-y-4"
+            className="flex flex-col gap-2.5 sm:flex-row sm:items-end"
             onSubmit={async (e) => {
               e.preventDefault()
               if (confirmDelete !== 'DELETE' || deleting) return
@@ -1289,8 +1440,8 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               try {
                 await deleteAccount()
                 toast('Your account has been deleted')
-                // The session is already cleared; leave the dashboard before a
-                // render can ask for a card that no longer exists.
+                // The session is already cleared; leave the dashboard before
+                // a render can ask for a card that no longer exists.
                 navigate('/', { replace: true })
               } catch (error) {
                 toast(error.message || 'Could not delete your account', 'info')
@@ -1298,26 +1449,41 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               }
             }}
           >
-            <Field label="Type DELETE to confirm" htmlFor="confirm-delete">
+            <Field label="Type DELETE to confirm" htmlFor="confirm-delete" className="sm:max-w-xs sm:flex-1">
               <Input
                 id="confirm-delete"
+                autoFocus
                 value={confirmDelete}
                 onChange={(e) => setConfirmDelete(e.target.value)}
                 placeholder="DELETE"
               />
             </Field>
-            <Button
-              type="submit"
-              variant="danger"
-              loading={deleting}
-              disabled={confirmDelete !== 'DELETE'}
-            >
+            <Button type="submit" variant="danger" loading={deleting} disabled={confirmDelete !== 'DELETE'}>
               Delete my account
             </Button>
-            <Button type="button" variant="secondary" onClick={onLogout} className="ml-2">
-              Log out
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={deleting}
+              onClick={() => {
+                setArmed(false)
+                setConfirmDelete('')
+              }}
+            >
+              Cancel
             </Button>
           </form>
+        ) : (
+          <div className="flex flex-wrap gap-2.5">
+            <Button type="button" variant="danger" onClick={() => setArmed(true)}>
+              Delete account
+            </Button>
+            <Button type="button" variant="secondary" onClick={onLogout}>
+              <LogOut size={15} aria-hidden="true" />
+              Log out
+            </Button>
+          </div>
+        )}
         </Panel>
       </div>
     </>
@@ -1326,7 +1492,13 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
 
 /* ----------------------------------------------------------------- shell */
 
-const EMPTY_ANALYTICS = { stats: { views: 0, clicks: 0, scans: 0 }, series: [], topLinks: [] }
+const EMPTY_ANALYTICS = {
+  stats: { views: 0, clicks: 0, scans: 0 },
+  ranges: null,
+  deltas: { views: null, clicks: null, scans: null },
+  series: [],
+  topLinks: [],
+}
 
 export default function Dashboard() {
   const { user, card, status, saveCard, logout, savePrefs, deleteAccount } = useAuth()
@@ -1390,6 +1562,13 @@ export default function Dashboard() {
 
   const setCard = (next) => saveCard(next)
   const publicUrl = `https://${SITE_DOMAIN}/${card.username}`
+  /**
+   * What the QR encodes: the same page, plus a marker saying how the visitor
+   * got there. Without it a scan is indistinguishable from someone opening the
+   * link, and the Scans figure could only ever be zero. The card page strips
+   * the parameter out of the address bar once it has counted it.
+   */
+  const qrUrl = `${publicUrl}?src=qr`
 
   const sidebar = (
     <nav className="flex flex-col gap-1" aria-label="Dashboard">
@@ -1459,10 +1638,10 @@ export default function Dashboard() {
             the page would otherwise sit underneath it. */}
         <main className="min-w-0 flex-1 px-5 pb-28 pt-8 lg:px-8 lg:pb-8" key={location.pathname}>
           <Routes>
-            <Route index element={<Overview card={card} publicUrl={publicUrl} analytics={analytics} pro={pro} />} />
+            <Route index element={<Overview card={card} publicUrl={publicUrl} qrUrl={qrUrl} analytics={analytics} pro={pro} />} />
             <Route path="edit" element={<EditCard card={card} setCard={setCard} pro={pro} />} />
             <Route path="templates" element={<TemplatesView card={card} setCard={setCard} pro={pro} />} />
-            <Route path="qr" element={<QrView card={card} publicUrl={publicUrl} />} />
+            <Route path="qr" element={<QrView card={card} publicUrl={publicUrl} qrUrl={qrUrl} />} />
             <Route path="analytics" element={<Analytics card={card} analytics={analytics} pro={pro} />} />
             <Route path="settings" element={
                 <Settings

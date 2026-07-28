@@ -35,7 +35,7 @@ function CardSkeleton() {
 
 export default function PublicCard() {
   const { username } = useParams()
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const [state, setState] = useState({ status: 'loading', card: null })
 
   /**
@@ -63,6 +63,25 @@ export default function PublicCard() {
   const previewTemplate = params.get('template')
   const override = TEMPLATES.some((t) => t.id === previewTemplate) ? previewTemplate : null
 
+  /**
+   * How the visitor arrived. The QR encodes `?src=qr`, which is the only way
+   * to tell a scan from someone opening the link — the request looks identical
+   * otherwise. Read once on mount, then wiped from the address bar so a URL
+   * copied off this page doesn't report every later visit as a scan.
+   */
+  const fromQr = params.get('src') === 'qr'
+
+  useEffect(() => {
+    if (!fromQr) return
+    const next = new URLSearchParams(params)
+    next.delete('src')
+    // `replace`, so Back still leaves the card rather than returning to the
+    // same page with the marker back in the URL.
+    setParams(next, { replace: true })
+    // Mount only: the point is to clean the address bar once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     let active = true
     setState({ status: 'loading', card: null })
@@ -71,8 +90,9 @@ export default function PublicCard() {
       .then((card) => {
         if (!active) return
         setState({ status: 'ready', card })
-        // Record the visit. Failures are swallowed inside api.track.
-        api.track(username, 'view')
+        // Record the visit. Failures are swallowed inside api.track, and the
+        // server drops the event entirely when the owner is the one looking.
+        api.track(username, fromQr ? 'scan' : 'view')
       })
       .catch(() => {
         if (active) setState({ status: 'missing', card: null })

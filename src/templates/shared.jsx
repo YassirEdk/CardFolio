@@ -203,15 +203,24 @@ export function ActionRow({ onSaveContact, onShare, accent, tone = 'light', clas
   )
 }
 
-export function PoweredBy({ card, tone = 'light', className }) {
-  // Pro can take the credit off the card entirely.
-  if (card?.hideBranding) return null
+/** The clearance this block owns: breathing room plus the home-indicator inset. */
+const CARD_BOTTOM_INSET = 'pb-[calc(2rem+var(--phone-safe-bottom,0px))]'
 
-  // The last block on every card, so it carries the home-indicator inset when
-  // the card is shown in a phone frame — that way the clearance is painted in
-  // the card's own colour instead of a strip of device black.
+export function PoweredBy({ card, tone = 'light', className }) {
+  /**
+   * Pro can take the credit off the card entirely — but not the space under
+   * it. This block is the last thing on every card, so it also carries the
+   * bottom clearance; dropping the whole element would leave the final section
+   * flush against the bottom edge, and under the home indicator on a phone.
+   */
+  if (card?.hideBranding) {
+    return <div aria-hidden="true" className={cx(CARD_BOTTOM_INSET, className)} />
+  }
+
+  // The clearance is painted in the card's own colour this way, instead of
+  // showing as a strip of device black inside the phone frame.
   return (
-    <div className={cx('pt-6 pb-[calc(2rem+var(--phone-safe-bottom,0px))] text-center', className)}>
+    <div className={cx('pt-6 text-center', CARD_BOTTOM_INSET, className)}>
       <a
         href="/"
         className={cx(

@@ -354,15 +354,41 @@ app.get('/api/cards/:username', asyncRoute(async (req, res) => {
   res.json({ card: toCard(rows[0], links) })
 }))
 
+/**
+ * Reads the bearer token if one was sent, and says nothing when it is missing
+ * or expired. Unlike `auth`, this never rejects the request — it is for routes
+ * open to everyone that behave differently for the signed-in owner.
+ */
+function optionalUserId(req) {
+  const header = req.headers.authorization || ''
+  if (!header.startsWith('Bearer ')) return null
+  try {
+    return jwt.verify(header.slice(7), JWT_SECRET).sub
+  } catch {
+    return null
+  }
+}
+
 /** Fire-and-forget analytics. Never fails the caller. */
 app.post('/api/cards/:username/events', asyncRoute(async (req, res) => {
   const type = String(req.body.type || '')
   if (!['view', 'click', 'scan'].includes(type)) return res.status(400).json({ error: 'Unknown event' })
 
-  const { rows } = await query('SELECT id FROM cards WHERE lower(username) = $1', [
+  const { rows } = await query('SELECT id, user_id FROM cards WHERE lower(username) = $1', [
     String(req.params.username).toLowerCase(),
   ])
-  if (rows[0]) {
+
+  /**
+   * Your own visits are not traffic. Previewing the card, opening your link to
+   * check a change, scanning your own QR to test it — all of that would
+   * otherwise be indistinguishable from a real visitor, and the first thing
+   * anyone does with a new card is look at it a dozen times.
+   *
+   * Accepted and dropped, not refused: the client treats this as fire and
+   * forget, and a 4xx here would only produce a console error to ignore.
+   */
+  const isOwner = rows[0] && optionalUserId(req) === rows[0].user_id
+  if (rows[0] && !isOwner) {
     await query('INSERT INTO card_events (card_id, type, link_id) VALUES ($1,$2,$3)', [
       rows[0].id,
       type,
@@ -619,6 +645,37 @@ app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
   }
 
   /**
+   * The same three figures over three spans, so the dashboard tiles can switch
+   * between them without another round trip. All of it is one scan of the
+   * table — three counts of the same rows is cheaper than three queries.
+   *
+   * Boundaries are the server's: "today" is today where the server lives, not
+   * where the visitor was. Fine for a per-day headline; a real report would
+   * need the account's timezone.
+   */
+  const { rows: spans } = await query(
+    `SELECT type,
+            count(*) FILTER (WHERE created_at >= current_date)::int              AS day,
+            count(*) FILTER (WHERE created_at >= date_trunc('month', now()))::int AS month,
+            count(*)::int                                                         AS total
+       FROM card_events
+      WHERE card_id = $1
+      GROUP BY type`,
+    [cardId]
+  )
+
+  const EMPTY_SPAN = { views: 0, clicks: 0, scans: 0 }
+  const ranges = { day: { ...EMPTY_SPAN }, month: { ...EMPTY_SPAN }, total: { ...EMPTY_SPAN } }
+  const KEY = { view: 'views', click: 'clicks', scan: 'scans' }
+  for (const row of spans) {
+    const key = KEY[row.type]
+    if (!key) continue
+    ranges.day[key] = row.day
+    ranges.month[key] = row.month
+    ranges.total[key] = row.total
+  }
+
+  /**
    * Analytics are a Pro feature, so a free account gets the shape of the
    * response and none of the figures. The cut happens here rather than in the
    * dashboard: numbers blurred in CSS are still numbers in the payload, one
@@ -632,9 +689,39 @@ app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
     return res.json({
       limited: true,
       stats: { views: null, clicks: null, scans: null },
+      deltas: { views: null, clicks: null, scans: null },
+      ranges: null,
       series: [],
       topLinks: [],
     })
+  }
+
+  /**
+   * The trend beside each figure: the last seven days against the seven
+   * before them.
+   *
+   * `null` when the earlier week saw nothing — there is no percentage change
+   * from zero, and a card with no history should say nothing rather than
+   * invent a number. The dashboard shows these three tiles at their most
+   * prominent, so a made-up "+12.4%" is the one thing that must never appear
+   * there.
+   */
+  const { rows: windows } = await query(
+    `SELECT type,
+            count(*) FILTER (WHERE created_at >= now() - interval '7 days')::int AS recent,
+            count(*) FILTER (WHERE created_at >= now() - interval '14 days'
+                               AND created_at <  now() - interval '7 days')::int AS previous
+       FROM card_events
+      WHERE card_id = $1 AND created_at >= now() - interval '14 days'
+      GROUP BY type`,
+    [cardId]
+  )
+
+  const deltas = { views: null, clicks: null, scans: null }
+  for (const row of windows) {
+    const key = KEY[row.type]
+    if (!key || row.previous === 0) continue
+    deltas[key] = Math.round(((row.recent - row.previous) / row.previous) * 1000) / 10
   }
 
   const { rows: series } = await query(
@@ -660,7 +747,7 @@ app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
     [cardId]
   )
 
-  res.json({ stats, series, topLinks })
+  res.json({ stats, ranges, deltas, series, topLinks })
 }))
 
 /* ----------------------------------------------------------------- errors */
