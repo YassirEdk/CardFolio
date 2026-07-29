@@ -124,6 +124,34 @@ async function issueVerification(user) {
   return sendVerificationEmail(user, token)
 }
 
+/**
+ * Rejects a write from an account whose address is unconfirmed.
+ *
+ * Runs after `auth`, and only on routes that change something. Reading is
+ * still allowed: someone who cannot confirm their address right now should
+ * still see their own card and their own figures — they simply cannot alter
+ * anything until the address is proven to reach them.
+ *
+ * Enforced here rather than by hiding buttons, because a hidden button is not
+ * a rule. The client hides them too, so the two agree, but this is the one
+ * that counts.
+ */
+async function requireVerified(req, res, next) {
+  try {
+    const { rows } = await query('SELECT email_verified FROM users WHERE id = $1', [req.userId])
+    if (!rows[0]) return res.status(404).json({ error: 'Account not found' })
+    if (rows[0].email_verified === false) {
+      return res.status(403).json({
+        error: 'Confirm your email address before changing your card.',
+        reason: 'email-unverified',
+      })
+    }
+    next()
+  } catch (error) {
+    next(error)
+  }
+}
+
 /** Rejects the request unless a valid bearer token is present. */
 function auth(req, res, next) {
   const header = req.headers.authorization || ''
@@ -369,6 +397,9 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
       }
     }
 
+    // Whether this call is what brought the account into being.
+    let created = false
+
     // 3. The signup page may not adopt an existing account, however it was
     //    found — by Google id or by email.
     if (user && signupOnly) return { conflict: true, email: user.email }
@@ -379,16 +410,22 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
 
     if (!user) {
       /**
-       * Verified on arrival: the route already refused any Google account
-       * whose `email_verified` claim was false, so asking the person to prove
-       * an address Google has just proven would be theatre.
+       * Unverified on arrival, like every other new account.
+       *
+       * Google has already proven this address — the route refuses any
+       * identity whose `email_verified` claim is false — so this is a
+       * deliberate choice to hold one rule rather than two: every account
+       * confirms by clicking a link, however it was created. The email goes
+       * out below, once the transaction has committed.
        */
       ;({ rows } = await client.query(
-        `INSERT INTO users (full_name, email, google_sub, avatar_url, email_verified)
-         VALUES ($1,$2,$3,$4,true) RETURNING *`,
+        `INSERT INTO users (full_name, email, google_sub, avatar_url)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
         [payload.name || payload.email.split("@")[0], payload.email, payload.sub, picture]
       ))
       user = rows[0]
+
+      created = true
 
       const username = await newUsername(client)
       await client.query(
@@ -402,7 +439,7 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
       ? await client.query('SELECT * FROM card_links WHERE card_id = $1 ORDER BY position', [cardRows[0].id])
       : { rows: [] }
 
-    return { user, card: toCard(cardRows[0], links) }
+    return { user, card: toCard(cardRows[0], links), created }
   })
 
   if (result?.conflict) {
@@ -422,6 +459,9 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
       reason: 'no-account',
     })
   }
+
+  // A brand-new Google account gets the same link as any other new account.
+  if (result.created) await issueVerification(result.user)
 
   res.json({
     token: sign(result.user),
@@ -598,7 +638,7 @@ const FREE_TEMPLATES = new Set(['minimal'])
 /** Links a free card may carry — mirrors FREE_LINK_LIMIT in the editor. */
 const FREE_LINK_LIMIT = 4
 
-app.put('/api/me/card', auth, asyncRoute(async (req, res) => {
+app.put('/api/me/card', auth, requireVerified, asyncRoute(async (req, res) => {
   const body = req.body || {}
   const { rows: owned } = await query(
     'SELECT id, username, hide_branding, indexable FROM cards WHERE user_id = $1',
@@ -764,7 +804,7 @@ app.put('/api/me/plan', auth, asyncRoute(async (req, res) => {
  * NOTE: nothing sends this email yet. The column records consent so the job,
  * when it exists, has an audience to read; it is not a promise of delivery.
  */
-app.put('/api/me/prefs', auth, asyncRoute(async (req, res) => {
+app.put('/api/me/prefs', auth, requireVerified, asyncRoute(async (req, res) => {
   if (!('weeklyEmail' in (req.body || {}))) {
     return res.status(400).json({ error: 'Nothing to update' })
   }

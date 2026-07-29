@@ -1638,7 +1638,7 @@ function VerifyEmailBanner({ email }) {
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{t('verify.bannerTitle')}</p>
         <p className="mt-0.5 text-sm leading-relaxed text-amber-900/80 dark:text-amber-200/80">
-          {t('verify.bannerBody', { email })}
+          {t('verify.lockedBanner', { email })}
         </p>
       </div>
       <Button type="button" variant="secondary" size="sm" onClick={resend} loading={sending} className="shrink-0">
@@ -1750,6 +1750,9 @@ export default function Dashboard() {
     return <Navigate to="/onboarding" replace />
   }
 
+  /** No confirmed address, no writes — matching `requireVerified` on the API. */
+  const locked = user?.emailVerified === false
+
   const setCard = (next) => saveCard(next)
   const publicUrl = `https://${SITE_DOMAIN}/${card.username}`
   /**
@@ -1838,11 +1841,28 @@ export default function Dashboard() {
 
           <Routes>
             <Route index element={<Overview card={card} publicUrl={publicUrl} qrUrl={qrUrl} analytics={analytics} pro={pro} />} />
-            <Route path="edit" element={<EditCard card={card} setCard={setCard} pro={pro} />} />
-            <Route path="templates" element={<TemplatesView card={card} setCard={setCard} pro={pro} />} />
+            {/**
+              * Editing needs a confirmed address; looking does not.
+              *
+              * The card, the QR code and the figures stay readable — locking
+              * someone out of their own numbers would punish them for a slow
+              * inbox. What is closed is everything that writes, which is the
+              * same line the API draws.
+              */}
+            <Route
+              path="edit"
+              element={locked ? <Navigate to="/verify" replace /> : <EditCard card={card} setCard={setCard} pro={pro} />}
+            />
+            <Route
+              path="templates"
+              element={
+                locked ? <Navigate to="/verify" replace /> : <TemplatesView card={card} setCard={setCard} pro={pro} />
+              }
+            />
             <Route path="qr" element={<QrView card={card} publicUrl={publicUrl} qrUrl={qrUrl} />} />
             <Route path="analytics" element={<Analytics card={card} analytics={analytics} pro={pro} />} />
             <Route path="settings" element={
+              locked ? <Navigate to="/verify" replace /> : (
                 <Settings
                   card={card}
                   setCard={setCard}
@@ -1852,7 +1872,8 @@ export default function Dashboard() {
                   savePrefs={savePrefs}
                   deleteAccount={deleteAccount}
                 />
-              } />
+              )
+            } />
           </Routes>
         </main>
       </div>

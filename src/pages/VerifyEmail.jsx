@@ -35,6 +35,15 @@ export default function VerifyEmail() {
     if (token) return { status: 'checking', email: null }
     return { status: 'pending', email: null }
   })
+  /**
+   * Whether this tab ever actually waited for anything.
+   *
+   * Only a tab that arrived unconfirmed should move on by itself when the
+   * confirmation lands — that is the signup flow continuing. Someone who typed
+   * the URL, or came back later with a confirmed account, navigated here on
+   * purpose and should be told where they are, not bounced somewhere else.
+   */
+  const waited = useRef(false)
   const [sending, setSending] = useState(false)
 
   // Strict Mode mounts effects twice in development, and this one spends a
@@ -80,9 +89,17 @@ export default function VerifyEmail() {
     return () => clearInterval(timer)
   }, [state.status, status, refresh])
 
-  // Confirmed — whether by this tab or by the poll noticing another one.
+  // Remember that this tab was, at some point, genuinely waiting.
   useEffect(() => {
-    if (user?.emailVerified && state.status === 'pending') {
+    if (state.status === 'pending' && user?.emailVerified === false) waited.current = true
+  }, [state.status, user?.emailVerified])
+
+  /**
+   * Confirmed while this tab was waiting — including by a click in another
+   * browser, which the poll above notices. That, and only that, advances.
+   */
+  useEffect(() => {
+    if (state.status === 'pending' && user?.emailVerified && waited.current) {
       navigate(onward, { replace: true })
     }
   }, [user?.emailVerified, state.status, navigate, onward])
@@ -99,13 +116,33 @@ export default function VerifyEmail() {
     }
   }
 
+  // Already confirmed and not mid-flow: say so rather than redirect.
+  const settled = state.status === 'pending' && user?.emailVerified === true && !waited.current
+  const shown = settled ? 'already' : state.status
+
   const views = {
     checking: { icon: Loader2, tone: 'text-slate-400', title: t('verify.checking') },
+    already: {
+      icon: CheckCircle2,
+      tone: 'text-emerald-600',
+      title: t('verify.alreadyTitle'),
+      body: t('verify.alreadyBody', { email: user?.email || '' }),
+    },
     pending: {
       icon: MailCheck,
       tone: 'text-accent-500',
-      title: t('verify.pendingTitle'),
-      body: t('verify.pendingBody', { email: user?.email || '' }),
+      /**
+       * Two different situations wear this state.
+       *
+       * Straight after signing up there is nothing to lose yet, so the page
+       * is an instruction: check your inbox. Arriving later — bounced out of
+       * the editor — the person has a card they cannot change, and the honest
+       * headline is what is locked and why, not "check your inbox" again.
+       */
+      title: card?.published ? t('verify.lockedTitle') : t('verify.pendingTitle'),
+      body: card?.published
+        ? t('verify.lockedBody', { email: user?.email || '' })
+        : t('verify.pendingBody', { email: user?.email || '' }),
     },
     done: {
       icon: CheckCircle2,
@@ -116,7 +153,7 @@ export default function VerifyEmail() {
     expired: { icon: Clock, tone: 'text-amber-600', title: t('verify.expiredTitle'), body: t('verify.expiredBody') },
     invalid: { icon: MailX, tone: 'text-slate-500', title: t('verify.invalidTitle'), body: t('verify.invalidBody') },
   }
-  const view = views[state.status]
+  const view = views[shown]
   const Icon = view.icon
 
   return (
@@ -140,7 +177,7 @@ export default function VerifyEmail() {
           <p className="mt-3 text-base leading-relaxed text-slate-600 dark:text-slate-300">{view.body}</p>
         )}
 
-        {state.status === 'pending' && (
+        {shown === 'pending' && (
           <>
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{t('verify.pendingHint')}</p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
@@ -158,7 +195,7 @@ export default function VerifyEmail() {
           </>
         )}
 
-        {state.status !== 'pending' && state.status !== 'checking' && (
+        {shown !== 'pending' && shown !== 'checking' && (
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             {status === 'authenticated' ? (
               <Button as={Link} to={onward} size="lg">
