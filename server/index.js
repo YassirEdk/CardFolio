@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { OAuth2Client } from 'google-auth-library'
+import nodemailer from 'nodemailer'
 import { pool, query, transaction, toCard } from './db.js'
 
 const app = express()
@@ -60,11 +61,229 @@ function publicUser(row) {
 
 /* ---------------------------------------------------- email verification */
 
-/** How long a verification link stays good. Long enough to find the email. */
-const VERIFY_TTL_HOURS = 24
+/**
+ * How long a verification link stays good.
+ *
+ * Fifteen minutes: long enough to switch to an inbox and back, short enough
+ * that a link sitting in a mailbox someone else can read is worth little. The
+ * resend button on the dashboard is what makes a short window bearable.
+ */
+const VERIFY_TTL_MINUTES = 15
 
 /** Where the link points. Set APP_URL in production; localhost is the default. */
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '')
+
+/**
+ * The three SMTP vars, and whether they are all there.
+ *
+ * Kept in one place because two callers ask the same question — the sender,
+ * deciding which transport to use, and the startup banner, reporting it. When
+ * they drifted apart the banner could claim SMTP while the sender quietly used
+ * something else.
+ */
+const SMTP_VARS = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS']
+const smtpMissing = () => SMTP_VARS.filter((name) => !process.env[name])
+/** Half-configured: someone started setting SMTP up and did not finish. */
+const smtpPartial = () => {
+  const missing = smtpMissing()
+  return missing.length > 0 && missing.length < SMTP_VARS.length
+}
+
+/**
+ * The configured mailbox, as a transport.
+ *
+ * Whitespace is stripped from the password because the one credential people
+ * paste here is a Google app password, which Google displays in four groups of
+ * four. The spaces are presentation, not part of the secret.
+ */
+function smtpTransport() {
+  const port = Number(process.env.SMTP_PORT || 465)
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    // 465 is implicit TLS; 587 upgrades with STARTTLS after connecting.
+    secure: port === 465,
+    auth: { user: process.env.SMTP_USER, pass: (process.env.SMTP_PASS || '').replace(/\s+/g, '') },
+  })
+}
+
+/**
+ * A throwaway inbox that catches the mail and shows it to you.
+ *
+ * The last resort, and the useful one in development. Ethereal is nodemailer's
+ * own test service: the account is created on the fly, needs no signup and no
+ * credentials of yours, and nothing reaches a real person. Each send returns a
+ * URL where that exact email — addressed to whoever signed up, rendered from
+ * the real HTML — can be read.
+ *
+ * That is what makes it worth the round trip: printing a link to a terminal
+ * proves the token works but says nothing about whether the email is right.
+ * This shows the email.
+ *
+ * One account per process, reused.
+ */
+let previewAccount = null
+
+async function sendViaPreviewInbox(user, link) {
+  try {
+    if (!previewAccount) previewAccount = await nodemailer.createTestAccount()
+
+    const transport = nodemailer.createTransport({
+      host: previewAccount.smtp.host,
+      port: previewAccount.smtp.port,
+      secure: previewAccount.smtp.secure,
+      auth: { user: previewAccount.user, pass: previewAccount.pass },
+    })
+
+    const info = await transport.sendMail({
+      from: process.env.MAIL_FROM || 'CardFolio <hello@cardfolio.test>',
+      to: user.email,
+      subject: 'Confirm your email address',
+      html: verificationHtml(user, link),
+      text: verificationText(user, link),
+    })
+
+    const preview = nodemailer.getTestMessageUrl(info)
+    console.log(`
+  Verification email for ${user.email}`)
+    console.log(`  Read it here: ${preview}`)
+    console.log(`  Or use the link directly: ${link}
+`)
+
+    /**
+     * `sent: false` on purpose. It reached a test inbox, not the person, and
+     * the interface must keep saying the address is unconfirmed — a preview is
+     * for whoever is building the thing, not for the person signing up.
+     */
+    return { sent: false, preview, link }
+  } catch (error) {
+    console.log(`
+  Verify ${user.email}:
+  ${link}
+`)
+    console.error('  (preview inbox unavailable:', error.message + ')')
+    return { sent: false, link }
+  }
+}
+
+/** The brand, as two colours an email client will actually honour. */
+const MAIL_INK = '#0f2544'
+const MAIL_ACCENT = '#2e6be6'
+
+/**
+ * The verification email, as HTML.
+ *
+ * Written the way email has to be written rather than the way the app is:
+ * tables for layout, every style inline, no external stylesheet and no
+ * webfont — Outlook and Gmail strip all three. A max width of 560px and a
+ * single column is what survives a phone.
+ *
+ * The button is a padded anchor rather than an image, so it renders even with
+ * images blocked, and the raw URL is printed underneath because some clients
+ * still refuse to make long links clickable.
+ */
+function verificationHtml(user, link) {
+  const firstName = (user.full_name || '').split(' ')[0] || 'there'
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:0;background:#f1f5fa;">
+    <!-- The preview line, hidden in the body but shown in the inbox list. -->
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+      Confirm your address to finish setting up your card.
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5fa;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="560" cellpadding="0" cellspacing="0"
+                 style="width:100%;max-width:560px;background:#ffffff;border:1px solid #dde7f3;border-radius:8px;">
+            <tr>
+              <td style="padding:28px 32px 0;">
+                <p style="margin:0;font:700 20px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:${MAIL_INK};">
+                  Card<span style="color:${MAIL_ACCENT};">Folio</span>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 32px 0;">
+                <h1 style="margin:0;font:700 22px/1.3 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:${MAIL_INK};">
+                  Confirm your email address
+                </h1>
+                <p style="margin:12px 0 0;font:400 15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#475569;">
+                  Hi ${escapeHtml(firstName)}, one tap and your card is ready to build. This confirms that
+                  <span style="color:${MAIL_INK};font-weight:600;">${escapeHtml(user.email)}</span> reaches you.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 32px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="background:${MAIL_ACCENT};border-radius:8px;">
+                      <a href="${link}"
+                         style="display:inline-block;padding:13px 26px;font:600 15px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#ffffff;text-decoration:none;">
+                        Confirm my email
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:22px 32px 0;">
+                <p style="margin:0;font:400 13px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#64748b;">
+                  The link expires in ${VERIFY_TTL_MINUTES} minutes. If it does, ask for another from your dashboard.
+                </p>
+                <p style="margin:14px 0 0;font:400 12px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#94a3b8;word-break:break-all;">
+                  Or paste this into your browser:<br />
+                  <a href="${link}" style="color:${MAIL_ACCENT};text-decoration:underline;">${link}</a>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:22px 32px 28px;">
+                <div style="height:1px;background:#e2e8f0;line-height:1px;">&nbsp;</div>
+                <p style="margin:16px 0 0;font:400 12px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#94a3b8;">
+                  You are receiving this because someone signed up for CardFolio with this address.
+                  If that was not you, ignore this email — nothing happens without the link above.
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:16px 0 0;font:400 12px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#94a3b8;">
+            CardFolio — one link and one QR code for your whole professional identity.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`
+}
+
+/** The same message for clients that show the text part. */
+function verificationText(user, link) {
+  const firstName = (user.full_name || '').split(' ')[0] || 'there'
+  return [
+    `Hi ${firstName},`,
+    '',
+    `Confirm your email address to finish setting up your CardFolio card:`,
+    link,
+    '',
+    `The link expires in ${VERIFY_TTL_MINUTES} minutes. If it does, ask for another from your dashboard.`,
+    '',
+    `If you did not sign up for CardFolio, ignore this email — nothing happens without the link.`,
+  ].join('\n')
+}
+
+/** Values go into the HTML above, so they are escaped on the way in. */
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 
 /**
  * Sends the verification email, if this deployment can send email at all.
@@ -80,9 +299,47 @@ const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, 
 async function sendVerificationEmail(user, token) {
   const link = `${APP_URL}/verify?token=${encodeURIComponent(token)}`
 
+  /**
+   * SMTP first, where it is configured.
+   *
+   * Not a preference for the protocol — a consequence of who can receive.
+   * Resend's shared test sender only delivers to the address that owns the
+   * Resend account, which makes it useless for confirming anybody else's
+   * email until a domain is verified. An ordinary mailbox over SMTP has no
+   * such limit: it sends to whoever you address it to, today, with no DNS to
+   * set up. Once a domain exists, remove the SMTP vars and Resend takes over
+   * again — it is the better transport at volume.
+   */
+  /**
+   * A half-filled SMTP block is a mistake, not a choice.
+   *
+   * Silently falling through to the preview inbox is what makes this hard to
+   * find: signup succeeds, the page says to check an inbox, and nothing ever
+   * arrives. Said out loud, at the moment of the send, it takes seconds.
+   */
+  if (smtpPartial()) {
+    console.error(`  SMTP is half-configured — missing ${smtpMissing().join(', ')}. Not sending over SMTP.`)
+  }
+
+  if (smtpMissing().length === 0) {
+    try {
+      const transport = smtpTransport()
+      await transport.sendMail({
+        from: process.env.MAIL_FROM || process.env.SMTP_USER,
+        to: user.email,
+        subject: 'Confirm your email address',
+        html: verificationHtml(user, link),
+        text: verificationText(user, link),
+      })
+      return { sent: true }
+    } catch (error) {
+      console.error('Verification email failed (SMTP):', error.message, '\n  link:', link)
+      return { sent: false, link }
+    }
+  }
+
   if (!process.env.RESEND_API_KEY) {
-    console.log(`\n  Verify ${user.email}:\n  ${link}\n`)
-    return { sent: false, link }
+    return sendViaPreviewInbox(user, link)
   }
 
   try {
@@ -96,10 +353,10 @@ async function sendVerificationEmail(user, token) {
         from: process.env.MAIL_FROM || 'CardFolio <onboarding@resend.dev>',
         to: user.email,
         subject: 'Confirm your email address',
-        text:
-          `Hi ${(user.full_name || '').split(' ')[0] || 'there'},\n\n` +
-          `Confirm your email address to finish setting up your CardFolio card:\n\n${link}\n\n` +
-          `The link works for ${VERIFY_TTL_HOURS} hours. If you didn't create an account, ignore this email.`,
+        html: verificationHtml(user, link),
+        // Sent alongside the HTML, not instead of it: some clients show this,
+        // and a mail with no text part scores worse with spam filters.
+        text: verificationText(user, link),
       }),
     })
     if (!response.ok) throw new Error(`Resend replied ${response.status}`)
@@ -118,8 +375,8 @@ async function issueVerification(user) {
   await query('DELETE FROM email_verifications WHERE user_id = $1', [user.id])
   await query(
     `INSERT INTO email_verifications (token, user_id, expires_at)
-     VALUES ($1, $2, now() + ($3 || ' hours')::interval)`,
-    [token, user.id, String(VERIFY_TTL_HOURS)]
+     VALUES ($1, $2, now() + ($3 || ' minutes')::interval)`,
+    [token, user.id, String(VERIFY_TTL_MINUTES)]
   )
   return sendVerificationEmail(user, token)
 }
@@ -294,6 +551,23 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
 
   const { rows } = await query('SELECT * FROM users WHERE lower(email) = lower($1)', [email])
   const user = rows[0]
+
+  /**
+   * An account created with Google has no password to compare against.
+   *
+   * `bcrypt.compare(password, null)` throws — "Illegal arguments: string,
+   * object" — which the error handler turned into a 500, so signing in with
+   * the wrong method looked like the server was broken. It is a normal,
+   * expected case, and it deserves the one message that actually helps: use
+   * the button you signed up with.
+   */
+  if (user && !user.password_hash) {
+    return res.status(401).json({
+      error: 'This account signs in with Google. Use the Google button above.',
+      reason: 'use-google',
+    })
+  }
+
   // Same message either way so the endpoint can't be used to enumerate emails.
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: 'That email and password don’t match.' })
@@ -1016,11 +1290,40 @@ if (isEntryPoint) {
      * and the link goes to a terminal nobody was reading. Better to announce
      * it than to let it be discovered.
      */
-    if (process.env.RESEND_API_KEY) {
+    if (smtpMissing().length === 0) {
+      console.log(
+        `  Verification email: sending via SMTP (${process.env.SMTP_HOST}) as ${process.env.MAIL_FROM || process.env.SMTP_USER}`
+      )
+      /**
+       * Prove it, rather than assume it.
+       *
+       * Three non-empty variables mean someone filled the form in, not that
+       * the mailbox will accept them — a revoked or mistyped app password
+       * looks identical here. Without this the banner says "sending via SMTP"
+       * and the first anyone hears of the failure is a person who never got
+       * their email. Deliberately not awaited: the API is already listening,
+       * and a slow handshake must not hold up boot.
+       */
+      smtpTransport()
+        .verify()
+        .then(() => console.log('  SMTP credentials accepted.'))
+        .catch((error) =>
+          console.error(
+            `  SMTP LOGIN FAILED — ${error.message.split('\n')[0]}\n` +
+              '  Mail will not be delivered until this is fixed. For Gmail, generate a fresh\n' +
+              '  app password at myaccount.google.com/apppasswords (2-step must be on) and\n' +
+              '  make sure it belongs to the same account as SMTP_USER.'
+          )
+        )
+    } else if (smtpPartial()) {
+      console.log(`  Verification email: SMTP is half-configured — missing ${smtpMissing().join(', ')}.`)
+      console.log('  Fill it in, or clear all three, to stop falling back to a preview inbox.')
+    } else if (process.env.RESEND_API_KEY) {
       console.log(`  Verification email: sending via Resend as ${process.env.MAIL_FROM || 'onboarding@resend.dev'}`)
+      console.log('  NOTE: the shared resend.dev sender only delivers to your own Resend account address.')
     } else {
-      console.log('  Verification email: NOT SENDING — no RESEND_API_KEY set.')
-      console.log('  Links will be printed here instead. See .env.example to enable sending.')
+      console.log('  Verification email: no provider configured — using a preview inbox.')
+      console.log('  Each email is printed here with a URL where you can read it.')
     }
   })
 

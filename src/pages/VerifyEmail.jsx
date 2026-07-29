@@ -57,21 +57,30 @@ export default function VerifyEmail() {
     if (!token || started.current) return
     started.current = true
 
-    let active = true
+    /**
+     * No `active` flag here, deliberately.
+     *
+     * Strict Mode mounts, unmounts and remounts in development. The usual
+     * ignore-if-unmounted guard, combined with the once-only guard above,
+     * left the page spinning for good: the first mount fired the request and
+     * was then torn down, so its result was discarded — and the second mount
+     * saw `started` and never asked again. Nothing was left to resolve the
+     * page.
+     *
+     * The request happens exactly once, so its result is always the right
+     * one to apply. A `setState` after unmount is a no-op in React 18, which
+     * is a far better failure than a spinner that never stops.
+     */
     api
       .verifyEmail(token)
       .then((result) => {
-        if (!active) return
         setState({ status: 'done', email: result.email })
+        // Only worth re-reading the session if it is that account's link.
         refresh?.()
       })
       .catch((error) => {
-        if (!active) return
         setState({ status: error.reason === 'expired' ? 'expired' : 'invalid', email: null })
       })
-    return () => {
-      active = false
-    }
   }, [token, refresh])
 
   /**
@@ -107,8 +116,15 @@ export default function VerifyEmail() {
   async function resend() {
     setSending(true)
     try {
-      await api.resendVerification()
-      toast(t('verify.sent'))
+      /**
+       * `sent` is the provider's answer, not ours.
+       *
+       * Reporting "link sent" when the provider refused it is how someone ends
+       * up waiting for an email that was never accepted — which is exactly the
+       * confusion Resend's test-mode restriction causes.
+       */
+      const result = await api.resendVerification()
+      toast(result?.sent === false ? t('verify.notSent') : t('verify.sent'), result?.sent === false ? 'info' : undefined)
     } catch (error) {
       toast(error.reason === 'rate-limited' ? t('verify.rateLimited') : error.message, 'info')
     } finally {
@@ -118,7 +134,15 @@ export default function VerifyEmail() {
 
   // Already confirmed and not mid-flow: say so rather than redirect.
   const settled = state.status === 'pending' && user?.emailVerified === true && !waited.current
-  const shown = settled ? 'already' : state.status
+
+  /** Signed in, but the link that was just spent belongs to another address. */
+  const otherAccount =
+    state.status === 'done' &&
+    Boolean(user?.email) &&
+    Boolean(state.email) &&
+    user.email.toLowerCase() !== state.email.toLowerCase()
+
+  const shown = settled ? 'already' : otherAccount ? 'done-other' : state.status
 
   const views = {
     checking: { icon: Loader2, tone: 'text-slate-400', title: t('verify.checking') },
@@ -149,6 +173,23 @@ export default function VerifyEmail() {
       tone: 'text-emerald-600',
       title: t('verify.successTitle'),
       body: t('verify.successBody', { email: state.email || '' }),
+    },
+    /**
+     * The link was for somebody else's account.
+     *
+     * A link opened in a browser already signed in as another account used to
+     * report a flat "Email confirmed", which reads as *this* account being
+     * confirmed — it is not, and the difference matters. The server was always
+     * right; it confirms whoever the token belongs to. This says whose.
+     */
+    'done-other': {
+      icon: MailCheck,
+      tone: 'text-amber-600',
+      title: t('verify.otherAccountTitle'),
+      body: t('verify.otherAccountBody', {
+        confirmed: state.email || '',
+        current: user?.email || '',
+      }),
     },
     expired: { icon: Clock, tone: 'text-amber-600', title: t('verify.expiredTitle'), body: t('verify.expiredBody') },
     invalid: { icon: MailX, tone: 'text-slate-500', title: t('verify.invalidTitle'), body: t('verify.invalidBody') },

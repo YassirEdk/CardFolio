@@ -1618,8 +1618,15 @@ function VerifyEmailBanner({ email }) {
   async function resend() {
     setSending(true)
     try {
-      await api.resendVerification()
-      toast(t('verify.sent'))
+      /**
+       * `sent` is the provider's answer, not ours.
+       *
+       * Reporting "link sent" when the provider refused it is how someone ends
+       * up waiting for an email that was never accepted — which is exactly the
+       * confusion Resend's test-mode restriction causes.
+       */
+      const result = await api.resendVerification()
+      toast(result?.sent === false ? t('verify.notSent') : t('verify.sent'), result?.sent === false ? 'info' : undefined)
     } catch (error) {
       toast(error.reason === 'rate-limited' ? t('verify.rateLimited') : error.message, 'info')
     } finally {
