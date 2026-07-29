@@ -11,6 +11,7 @@ import {
   linkAttrs,
 } from './parts'
 import { useCardActions } from '../lib/useCardActions'
+import { useT } from '../lib/i18n'
 
 /**
  * Executive on desktop — the original CardFolio desktop design, kept as this
@@ -19,7 +20,8 @@ import { useCardActions } from '../lib/useCardActions'
  */
 export default function DesktopExecutive({ card }) {
   const accent = card.accent || '#2E6BE6'
-  const contacts = desktopContacts(card)
+  const t = useT()
+  const contacts = desktopContacts(card, t)
   const socials = desktopSocials(card)
   const { publicUrl, onSaveContact, onShare } = useCardActions(card)
 
@@ -106,7 +108,7 @@ export default function DesktopExecutive({ card }) {
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-white px-6 text-sm font-semibold text-navy-900 transition-colors hover:bg-slate-100"
                 >
                   <Download size={16} aria-hidden="true" />
-                  Save contact
+                  {t('card.saveContact')}
                 </button>
                 <button
                   type="button"
@@ -114,7 +116,7 @@ export default function DesktopExecutive({ card }) {
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-white/25 px-6 text-sm font-semibold text-white transition-colors hover:bg-white/10"
                 >
                   <Share2 size={16} aria-hidden="true" />
-                  Share
+                  {t('card.share')}
                 </button>
               </div>
 
@@ -144,14 +146,14 @@ export default function DesktopExecutive({ card }) {
           <div className="space-y-10">
             {card.bio && (
               <section aria-label="About">
-                <SectionLabel>About</SectionLabel>
+                <SectionLabel>{t('card.about')}</SectionLabel>
                 <p className="mt-4 max-w-prose text-lg leading-relaxed text-slate-700">{card.bio}</p>
               </section>
             )}
 
             {contacts.length > 0 && (
               <section aria-label="Contact details">
-                <SectionLabel>Contact</SectionLabel>
+                <SectionLabel>{t('card.contact')}</SectionLabel>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {contacts.map((item) => (
                     <a
@@ -183,7 +185,7 @@ export default function DesktopExecutive({ card }) {
 
             {socials.length > 0 && (
               <section aria-label="Profiles and portfolio">
-                <SectionLabel>Profiles & portfolio</SectionLabel>
+                <SectionLabel>{t('card.profilesPortfolio')}</SectionLabel>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {socials.map((link) => (
                     <a

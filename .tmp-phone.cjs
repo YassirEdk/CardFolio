@@ -1,3 +1,4 @@
+const DEFAULT_DIAL="+212"; const DIAL_CODES=["+1","+7","+20","+27","+31","+32","+33","+34","+39","+44","+49","+52","+55","+61","+81","+86","+90","+91","+212","+213","+216","+234","+254","+351","+966","+971"].sort((a,b)=>b.length-a.length);
 import { DEFAULT_DIAL, DIAL_CODES } from '../data/countries'
 
 /**
@@ -15,7 +16,7 @@ import { DEFAULT_DIAL, DIAL_CODES } from '../data/countries'
  * digits. An unrecognised or missing code falls back to `fallback`, and
  * whatever digits are there are treated as national.
  */
-export function splitPhone(value, fallback = DEFAULT_DIAL) {
+function splitPhone(value, fallback = DEFAULT_DIAL) {
   const raw = String(value ?? '').trim()
   if (!raw) return { dial: fallback, national: '' }
 
@@ -27,22 +28,17 @@ export function splitPhone(value, fallback = DEFAULT_DIAL) {
   return { dial: fallback, national: digits }
 }
 
-/**
- * Dial code + national digits → the single string a card stores.
- *
- * Stored grouped, in the country's own convention, so a card that is read
- * straight out of the database — an export, a vCard, an older client — reads
- * the same as one rendered through a template. `sameNumber` and `telHref`
- * both work on digits alone, so the spacing costs nothing downstream.
- */
-export function joinPhone(dial, national) {
+/** Dial code + national digits → the single string a card stores. */
+function joinPhone(dial, national) {
   const digits = String(national ?? '').replace(/\D/g, '')
   if (!digits) return ''
-  return `${dial} ${formatNationalFor(dial, digits)}`
+  const head = digits.slice(0, 3)
+  const tail = digits.slice(3)
+  return tail ? `${dial} ${head}-${tail}` : `${dial} ${head}`
 }
 
 /** The national part, grouped for display: "4155550134" → "415-5550134". */
-export function formatNational(value) {
+function formatNational(value) {
   const digits = String(value ?? '').replace(/\D/g, '')
   if (digits.length <= 3) return digits
   return `${digits.slice(0, 3)}-${digits.slice(3)}`
@@ -61,7 +57,7 @@ export function formatNational(value) {
  * business card, and the number on it is almost always a mobile.
  */
 const GROUPS = {
-  '+212': [3, 6], // Morocco     600-112233
+  '+212': [3, 6], // Morocco     682-546896
   '+213': [3, 2, 2, 2], // Algeria
   '+216': [2, 3, 3], // Tunisia
   '+1': [3, 3, 4], // US / Canada
@@ -103,29 +99,15 @@ function chunk(digits, sizes) {
 }
 
 /**
- * The national part alone, grouped for `dial`'s country — what the editor
- * shows beside the country picker, where the code lives in the button rather
- * than in the field. Same rules as `formatPhone`, minus the code.
- */
-export function formatNationalFor(dial, value) {
-  const digits = String(value ?? '').replace(/\D/g, '')
-  if (!digits) return ''
-  const sizes = GROUPS[dial]
-  const expected = sizes?.reduce((total, size) => total + size, 0)
-  const parts = sizes && digits.length === expected ? chunk(digits, sizes) : chunk(digits, [3])
-  return parts.length === 2 ? parts.join('-') : parts.join(' ')
-}
-
-/**
  * A stored number, written the way its own country writes it:
- * "+212600112233" → "+212 600-112233", "+33612345678" → "+33 6 12 34 56 78".
+ * "+212682546896" → "+212 682-546896", "+33612345678" → "+33 6 12 34 56 78".
  *
  * The pattern only applies when the digits actually fit it — a number one
  * short of the national length would otherwise be regrouped into something
  * that looks authoritative and is wrong. Anything unrecognised falls back to
  * a plain three-then-rest split, which is never wrong, only plain.
  */
-export function formatPhone(value) {
+function formatPhone(value) {
   const raw = String(value ?? '').trim()
   if (!raw) return ''
 
@@ -137,23 +119,25 @@ export function formatPhone(value) {
   const expected = sizes?.reduce((total, size) => total + size, 0)
   const parts = sizes && national.length === expected ? chunk(national, sizes) : chunk(national, [3])
 
-  // Two groups read better hyphenated — "600-112233" — and three or more read
+  // Two groups read better hyphenated — "682-546896" — and three or more read
   // better spaced, which is how those countries write them anyway.
   return `${dial} ${parts.length === 2 ? parts.join('-') : parts.join(' ')}`
 }
 
 /**
  * Whether two numbers are the same line, compared on digits alone: "+212
- * 600-112233" and "+212600112233" are one number written two ways.
+ * 682-546896" and "+212682546896" are one number written two ways.
  */
-export function sameNumber(a, b) {
+function sameNumber(a, b) {
   const digits = (value) => String(value ?? '').replace(/\D/g, '')
   return Boolean(digits(a)) && digits(a) === digits(b)
 }
 
 /** The same number as a dialable href: digits and a leading + only. */
-export function telHref(value) {
+function telHref(value) {
   const raw = String(value ?? '')
   const digits = raw.replace(/\D/g, '')
   return /^[^\d]*\+/.test(raw) ? `tel:+${digits}` : `tel:${digits}`
 }
+
+module.exports={formatPhone}

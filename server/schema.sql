@@ -98,3 +98,30 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_email boolean NOT NULL DEFAULT
 -- a photo. On by default: most logo artwork is dark and needs it to stay
 -- legible, but a logo made for dark surfaces looks better without.
 ALTER TABLE cards ADD COLUMN IF NOT EXISTS logo_plate boolean NOT NULL DEFAULT true;
+
+-- ------------------------------------------------------------ link handles
+-- What a link row shows under its platform name. Normally read from the end of
+-- the URL, which is right for a profile link — but a link may legitimately
+-- point somewhere that is not a profile path, and then the URL has no handle
+-- in it to read. Null means "work it out from the URL", which is every row
+-- written before this column existed.
+ALTER TABLE card_links ADD COLUMN IF NOT EXISTS handle text;
+
+-- ------------------------------------------------------ email verification
+-- Added with DEFAULT true and then flipped to false: the rows that exist when
+-- this runs are accounts from before verification existed, and locking them
+-- out of their own cards to prove an address they have been using for months
+-- would be a punishment for our change. Everyone after this starts unverified.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT true;
+ALTER TABLE users ALTER COLUMN email_verified SET DEFAULT false;
+
+-- One row per outstanding link. The token is the primary key, so verifying is
+-- a single lookup, and `ON DELETE CASCADE` clears them with the account.
+CREATE TABLE IF NOT EXISTS email_verifications (
+  token      text PRIMARY KEY,
+  user_id    uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS email_verifications_user_idx ON email_verifications (user_id);

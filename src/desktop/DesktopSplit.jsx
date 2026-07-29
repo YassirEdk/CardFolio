@@ -12,6 +12,7 @@ import {
   linkAttrs,
 } from './parts'
 import { useCardActions } from '../lib/useCardActions'
+import { useT } from '../lib/i18n'
 
 /**
  * Split on desktop — the phone template's idea at full width: a saturated
@@ -22,7 +23,8 @@ import { useCardActions } from '../lib/useCardActions'
  */
 export default function DesktopSplit({ card }) {
   const accent = card.accent || '#2E6BE6'
-  const contacts = desktopContacts(card)
+  const t = useT()
+  const contacts = desktopContacts(card, t)
   const socials = desktopSocials(card)
   const { publicUrl, onSaveContact, onShare } = useCardActions(card)
 
@@ -81,7 +83,7 @@ export default function DesktopSplit({ card }) {
                   style={{ color: accent }}
                 >
                   <Download size={16} aria-hidden="true" />
-                  Save contact
+                  {t('card.saveContact')}
                 </button>
                 <button
                   type="button"
@@ -89,7 +91,7 @@ export default function DesktopSplit({ card }) {
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-white/40 px-6 text-sm font-semibold text-white transition-colors hover:bg-white/10"
                 >
                   <Share2 size={16} aria-hidden="true" />
-                  Share
+                  {t('card.share')}
                 </button>
               </div>
             </div>
@@ -127,7 +129,7 @@ export default function DesktopSplit({ card }) {
             <div className="space-y-10">
               {contacts.length > 0 && (
                 <section aria-label="Contact details">
-                  <SectionLabel>Contact</SectionLabel>
+                  <SectionLabel>{t('card.contact')}</SectionLabel>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     {contacts.map((item) => (
                       <a
@@ -163,7 +165,7 @@ export default function DesktopSplit({ card }) {
 
               {socials.length > 0 && (
                 <section aria-label="Profiles and portfolio">
-                  <SectionLabel>Platforms</SectionLabel>
+                  <SectionLabel>{t('card.platforms')}</SectionLabel>
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
                     {socials.map((link) => (
                       <a

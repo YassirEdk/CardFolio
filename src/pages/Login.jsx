@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRight, Eye, EyeOff } from 'lucide-react'
 import AuthLayout, { Divider } from '../components/AuthLayout'
 import GoogleSignIn from '../components/GoogleSignIn'
 import { Button, Field, Input } from '../components/ui'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../lib/auth'
+import { useT } from '../lib/i18n'
 
 export function validateEmail(value) {
   if (!value.trim()) return 'Enter your email address.'
@@ -14,10 +15,17 @@ export function validateEmail(value) {
 }
 
 export default function Login() {
+  const t = useT()
   const navigate = useNavigate()
   const toast = useToast()
   const { login, loginWithGoogle, status, card } = useAuth()
-  const [values, setValues] = useState({ email: '', password: '' })
+  /**
+   * Arriving from the "you already have an account" dialog carries the address
+   * with it, so the field is already filled: the point of sending someone here
+   * is that they were about to type it again.
+   */
+  const location = useLocation()
+  const [values, setValues] = useState({ email: location.state?.email || '', password: '' })
   const [errors, setErrors] = useState({})
   const [showPassword, setShowPassword] = useState(false)
   const [noAccount, setNoAccount] = useState(false)
@@ -75,13 +83,13 @@ export default function Login() {
 
   return (
     <AuthLayout
-      title="Log in to CardFolio"
-      subtitle="Manage your card, links and analytics."
+      title={t('authPage.loginTitle')}
+      subtitle={t('authPage.loginSubtitle')}
       footer={
         <>
-          Don’t have an account?{' '}
-          <Link to="/signup" className="font-semibold text-accent-600 hover:text-accent-700">
-            Create your free card
+          {t('authPage.noAccountYet')}{' '}
+          <Link to="/signup" className="font-semibold text-accent-600 dark:text-accent-300 hover:text-accent-700">
+            {t('authPage.createFreeCard')}
           </Link>
         </>
       }
@@ -91,11 +99,8 @@ export default function Login() {
           error next to the email field they never touched. */}
       {noAccount && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-900">No account with that Google address</p>
-          <p className="mt-1 text-sm leading-relaxed text-amber-900/80">
-            Nothing is signed up under it yet. Create your card first — it takes a minute, and you can use
-            the same Google account.
-          </p>
+          <p className="text-sm font-semibold text-amber-900">{t('authPage.noGoogleAccountTitle')}</p>
+          <p className="mt-1 text-sm leading-relaxed text-amber-900/80">{t('authPage.noGoogleAccountBody')}</p>
           <Button as={Link} to="/signup" size="sm" className="mt-3">
             Create your free card
             <ArrowRight size={15} aria-hidden="true" />
@@ -111,7 +116,7 @@ export default function Login() {
       <Divider>or log in with email</Divider>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-5">
-        <Field label="Email address" htmlFor="email" error={errors.email} required>
+        <Field label={t('auth.email')} htmlFor="email" error={errors.email} required>
           <Input
             id="email"
             name="email"
@@ -125,12 +130,12 @@ export default function Login() {
         </Field>
 
         <Field
-          label="Password"
+          label={t('auth.password')}
           htmlFor="password"
           error={errors.password}
           required
           hint={
-            <Link to="/login" className="font-semibold text-accent-600 hover:text-accent-700">
+            <Link to="/login" className="font-semibold text-accent-600 dark:text-accent-300 hover:text-accent-700">
               Forgot password?
             </Link>
           }
@@ -150,7 +155,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => setShowPassword((value) => !value)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? t('authPage.hidePassword') : t('authPage.showPassword')}
               className="absolute right-1 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-md text-slate-400 transition-colors hover:text-navy-900"
             >
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -158,17 +163,17 @@ export default function Login() {
           </div>
         </Field>
 
-        <label className="flex items-center gap-2.5 text-sm text-slate-600">
+        <label className="flex items-center gap-2.5 text-sm text-slate-600 dark:text-slate-300">
           <input
             type="checkbox"
             defaultChecked
-            className="h-4 w-4 rounded-xs border-slate-300 text-accent-500 focus:ring-accent-500"
+            className="h-4 w-4 rounded-xs border-slate-300 dark:border-navy-700 text-accent-500 focus:ring-accent-500"
           />
-          Keep me signed in
+          {t('authPage.keepSignedIn')}
         </label>
 
         <Button type="submit" size="lg" className="w-full" loading={submitting}>
-          Log in
+          {t('common.login')}
         </Button>
       </form>
     </AuthLayout>

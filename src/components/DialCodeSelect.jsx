@@ -18,7 +18,7 @@ function Flag({ iso, className }) {
     return (
       <span
         className={cx(
-          'grid shrink-0 place-items-center rounded-xs bg-slate-100 text-[9px] font-bold text-slate-500',
+          'grid shrink-0 place-items-center rounded-xs bg-slate-100 dark:bg-navy-800 text-[9px] font-bold text-slate-500 dark:text-slate-400',
           className
         )}
         aria-hidden="true"
@@ -132,9 +132,9 @@ export default function DialCodeSelect({ value, onChange, id, disabled = false }
         className={cx(
           'flex h-11 w-[7.5rem] items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors',
           disabled
-            ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-500'
-            : 'bg-white text-navy-900',
-          !disabled && (open ? 'border-accent-500 ring-2 ring-accent-500/25' : 'border-slate-300 hover:border-slate-400')
+            ? 'cursor-not-allowed border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 text-slate-500 dark:text-slate-400'
+            : 'bg-white dark:bg-navy-900 text-navy-900 dark:text-white',
+          !disabled && (open ? 'border-accent-500 ring-2 ring-accent-500/25' : 'border-slate-300 dark:border-navy-700 hover:border-slate-400')
         )}
       >
         <Flag iso={selected.iso} className="h-4 w-6" />
@@ -147,7 +147,7 @@ export default function DialCodeSelect({ value, onChange, id, disabled = false }
           ref={listRef}
           role="listbox"
           aria-label="Country dial code"
-          className="animate-toast-in absolute left-0 top-12 z-50 max-h-64 w-72 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white py-1 shadow-[var(--shadow-lift)]"
+          className="animate-toast-in absolute left-0 top-12 z-50 max-h-64 w-72 overflow-y-auto overscroll-contain rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 py-1 shadow-[var(--shadow-lift)]"
         >
           {options.map((country, index) => (
             <li key={country.iso}>
@@ -159,13 +159,13 @@ export default function DialCodeSelect({ value, onChange, id, disabled = false }
                 onClick={() => choose(country)}
                 className={cx(
                   'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm',
-                  index === active ? 'bg-slate-100' : 'bg-white',
-                  country.dial === value ? 'font-semibold text-navy-900' : 'text-slate-700'
+                  index === active ? 'bg-slate-100 dark:bg-navy-800' : 'bg-white dark:bg-navy-900',
+                  country.dial === value ? 'font-semibold text-navy-900 dark:text-white' : 'text-slate-700 dark:text-slate-200'
                 )}
               >
                 <Flag iso={country.iso} className="h-4 w-6" />
                 <span className="min-w-0 flex-1 truncate">{country.name}</span>
-                <span className="shrink-0 text-xs text-slate-500">{country.dial}</span>
+                <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{country.dial}</span>
               </button>
             </li>
           ))}

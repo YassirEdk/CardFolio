@@ -13,14 +13,14 @@ const PROOF = [
 /** Centred auth card with a navy value-proposition panel on desktop. */
 export default function AuthLayout({ title, subtitle, children, footer }) {
   return (
-    <div className="relative min-h-dvh bg-slate-50 lg:grid lg:grid-cols-[1fr_460px]">
+    <div className="relative min-h-dvh bg-slate-50 dark:bg-navy-950 lg:grid lg:grid-cols-[1fr_460px]">
       <AnimatedBackdrop grid={false} />
       <div className="relative flex min-h-dvh flex-col px-5 py-8 sm:px-8">
         <div className="flex items-center justify-between">
           <Logo />
           <Link
             to="/"
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-slate-500 transition-colors hover:text-navy-900"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-slate-500 dark:text-slate-400 transition-colors hover:text-navy-900"
           >
             <ArrowLeft size={15} aria-hidden="true" />
             Back to home
@@ -29,12 +29,12 @@ export default function AuthLayout({ title, subtitle, children, footer }) {
 
         <main className="flex flex-1 items-center justify-center py-10">
           <div className="w-full max-w-md">
-            <div className="rounded-md border border-slate-200 bg-white p-7 shadow-[var(--shadow-card)] sm:p-8">
-              <h1 className="text-2xl font-bold tracking-tight text-navy-900">{title}</h1>
-              {subtitle && <p className="mt-2 text-sm leading-relaxed text-slate-600">{subtitle}</p>}
+            <div className="rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 p-7 shadow-[var(--shadow-card)] sm:p-8">
+              <h1 className="text-2xl font-bold tracking-tight text-navy-900 dark:text-white">{title}</h1>
+              {subtitle && <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{subtitle}</p>}
               <div className="mt-7">{children}</div>
             </div>
-            {footer && <div className="mt-6 text-center text-sm text-slate-600">{footer}</div>}
+            {footer && <div className="mt-6 text-center text-sm text-slate-600 dark:text-slate-300">{footer}</div>}
           </div>
         </main>
       </div>
@@ -75,7 +75,7 @@ export function GoogleButton({ children = 'Continue with Google', onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex h-12 w-full items-center justify-center gap-2.5 rounded-md border border-slate-300 bg-white text-sm font-semibold text-navy-900 transition-colors hover:bg-slate-50"
+      className="flex h-12 w-full items-center justify-center gap-2.5 rounded-md border border-slate-300 dark:border-navy-700 bg-white dark:bg-navy-900 text-sm font-semibold text-navy-900 dark:text-white transition-colors hover:bg-slate-50"
     >
       <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
         <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.6 9.5 24 9.5z" />
@@ -91,9 +91,9 @@ export function GoogleButton({ children = 'Continue with Google', onClick }) {
 export function Divider({ children = 'or' }) {
   return (
     <div className="my-6 flex items-center gap-4">
-      <span className="h-px flex-1 bg-slate-200" />
+      <span className="h-px flex-1 bg-slate-200 dark:bg-navy-800" />
       <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{children}</span>
-      <span className="h-px flex-1 bg-slate-200" />
+      <span className="h-px flex-1 bg-slate-200 dark:bg-navy-800" />
     </div>
   )
 }

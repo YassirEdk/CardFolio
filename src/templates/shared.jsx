@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Mail, Phone, MessageCircle, Globe, MapPin, Download, Share2, User } from 'lucide-react'
-import { getPlatform } from '../data/platforms'
+import { brandOn, getPlatform } from '../data/platforms'
 import { photoSrc } from '../lib/image'
-import { telHref, sameNumber } from '../lib/phone'
+import { telHref, sameNumber, formatPhone } from '../lib/phone'
 import { textOn } from '../lib/color'
 import { cx } from '../components/ui'
+import { useT } from '../lib/i18n'
 
 /**
  * Every template receives the same props:
@@ -13,7 +14,12 @@ import { cx } from '../components/ui'
  * direct contact methods and social/platform links.
  */
 
-export function contactItems(card) {
+/**
+ * `t` is passed in rather than pulled from a hook: this is a plain function,
+ * called from five templates that each already have one. Defaulting it keeps
+ * every existing caller working, in English.
+ */
+export function contactItems(card, t = (key) => key) {
   const items = []
   // One line used for both is one row, not the same number printed twice.
   const oneNumber = sameNumber(card.phone, card.whatsapp)
@@ -22,25 +28,26 @@ export function contactItems(card) {
     items.push({
       key: 'phone',
       icon: Phone,
-      label: oneNumber ? 'Call & WhatsApp' : 'Call',
-      value: card.phone,
+      label: oneNumber ? t('card.callWhatsapp') : t('card.call'),
+      // Grouped the way its own country writes it; the href stays digits.
+      value: formatPhone(card.phone),
       href: telHref(card.phone),
     })
   if (card.whatsapp && !oneNumber)
     items.push({
       key: 'whatsapp',
       icon: MessageCircle,
-      label: 'WhatsApp',
-      value: card.whatsapp,
+      label: t('card.whatsapp'),
+      value: formatPhone(card.whatsapp),
       href: `https://wa.me/${String(card.whatsapp).replace(/[^0-9]/g, '')}`,
       external: true,
     })
-  if (card.email) items.push({ key: 'email', icon: Mail, label: 'Email', value: card.email, href: `mailto:${card.email}` })
+  if (card.email) items.push({ key: 'email', icon: Mail, label: t('card.emailLabel'), value: card.email, href: `mailto:${card.email}` })
   if (card.website)
     items.push({
       key: 'website',
       icon: Globe,
-      label: 'Website',
+      label: t('card.website'),
       value: String(card.website).replace(/^https?:\/\//, ''),
       href: card.website,
       external: true,
@@ -48,7 +55,12 @@ export function contactItems(card) {
   return items
 }
 
-export function socialItems(card) {
+/**
+ * `surface` is the colour the links are drawn on, and only the monochrome
+ * marks read it — see `brandOn`. It defaults to white because every template
+ * but Dark Pro paints on a light card.
+ */
+export function socialItems(card, surface = '#ffffff') {
   return (card.links || [])
     .filter((link) => link.url)
     .map((link) => {
@@ -57,8 +69,10 @@ export function socialItems(card) {
         ...link,
         name: link.label || platform.name,
         icon: platform.icon,
-        brand: platform.color,
-        handle: handleFromUrl(link.url),
+        brand: brandOn(platform, surface),
+        // A stored handle wins: the URL is where the link goes, which is not
+        // always where the person's name is written.
+        handle: link.handle ? `@${String(link.handle).replace(/^@/, '')}` : handleFromUrl(link.url),
       }
     })
 }
@@ -167,6 +181,7 @@ export function LocationLine({ card, className }) {
 
 /** Save contact + Share pair, tinted to the template's palette. */
 export function ActionRow({ onSaveContact, onShare, accent, tone = 'light', className }) {
+  const t = useT()
   const shareBase =
     tone === 'dark'
       ? 'border-white/20 bg-white/5 text-white hover:bg-white/10 active:bg-white/20'
@@ -186,7 +201,7 @@ export function ActionRow({ onSaveContact, onShare, accent, tone = 'light', clas
         )}
       >
         <Download size={16} aria-hidden="true" />
-        Save contact
+        {t('card.saveContact')}
       </button>
       <button
         type="button"
@@ -197,7 +212,7 @@ export function ActionRow({ onSaveContact, onShare, accent, tone = 'light', clas
         )}
       >
         <Share2 size={16} aria-hidden="true" />
-        Share
+        {t('card.share')}
       </button>
     </div>
   )
@@ -207,6 +222,7 @@ export function ActionRow({ onSaveContact, onShare, accent, tone = 'light', clas
 const CARD_BOTTOM_INSET = 'pb-[calc(2rem+var(--phone-safe-bottom,0px))]'
 
 export function PoweredBy({ card, tone = 'light', className }) {
+  const t = useT()
   /**
    * Pro can take the credit off the card entirely — but not the space under
    * it. This block is the last thing on every card, so it also carries the
@@ -228,7 +244,7 @@ export function PoweredBy({ card, tone = 'light', className }) {
           tone === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-navy-900'
         )}
       >
-        Powered by <span className="font-bold">CardFolio</span>
+        {t('card.poweredBy')} <span className="font-bold">CardFolio</span>
       </a>
     </div>
   )

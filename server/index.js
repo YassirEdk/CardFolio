@@ -5,7 +5,7 @@ import express from 'express'
 import cors from 'cors'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { OAuth2Client } from 'google-auth-library'
 import { pool, query, transaction, toCard } from './db.js'
 
@@ -52,7 +52,76 @@ function publicUser(row) {
     email: row.email,
     plan: row.plan || 'free',
     weeklyEmail: row.weekly_email ?? true,
+    // `?? true` for a row read before the column existed: an account that
+    // predates verification is not an unverified account.
+    emailVerified: row.email_verified ?? true,
   }
+}
+
+/* ---------------------------------------------------- email verification */
+
+/** How long a verification link stays good. Long enough to find the email. */
+const VERIFY_TTL_HOURS = 24
+
+/** Where the link points. Set APP_URL in production; localhost is the default. */
+const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '')
+
+/**
+ * Sends the verification email, if this deployment can send email at all.
+ *
+ * With RESEND_API_KEY set it posts to Resend over plain fetch — no SDK, no
+ * dependency. Without one it prints the link to the server log, which is what
+ * makes the whole flow testable in development: the link is real and works,
+ * it just arrives in the terminal instead of an inbox.
+ *
+ * Never throws. A signup that succeeded must not be reported as failed
+ * because a mail provider was slow.
+ */
+async function sendVerificationEmail(user, token) {
+  const link = `${APP_URL}/verify?token=${encodeURIComponent(token)}`
+
+  if (!process.env.RESEND_API_KEY) {
+    console.log(`\n  Verify ${user.email}:\n  ${link}\n`)
+    return { sent: false, link }
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.MAIL_FROM || 'CardFolio <onboarding@resend.dev>',
+        to: user.email,
+        subject: 'Confirm your email address',
+        text:
+          `Hi ${(user.full_name || '').split(' ')[0] || 'there'},\n\n` +
+          `Confirm your email address to finish setting up your CardFolio card:\n\n${link}\n\n` +
+          `The link works for ${VERIFY_TTL_HOURS} hours. If you didn't create an account, ignore this email.`,
+      }),
+    })
+    if (!response.ok) throw new Error(`Resend replied ${response.status}`)
+    return { sent: true }
+  } catch (error) {
+    // Logged, not raised: the account exists either way, and the person can
+    // ask for another link from the dashboard.
+    console.error('Verification email failed:', error.message, '\n  link:', link)
+    return { sent: false, link }
+  }
+}
+
+/** Issues a fresh link for a user, replacing any outstanding one. */
+async function issueVerification(user) {
+  const token = randomBytes(32).toString('hex')
+  await query('DELETE FROM email_verifications WHERE user_id = $1', [user.id])
+  await query(
+    `INSERT INTO email_verifications (token, user_id, expires_at)
+     VALUES ($1, $2, now() + ($3 || ' hours')::interval)`,
+    [token, user.id, String(VERIFY_TTL_HOURS)]
+  )
+  return sendVerificationEmail(user, token)
 }
 
 /** Rejects the request unless a valid bearer token is present. */
@@ -168,6 +237,9 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
       return { user, card: toCard(cardRows[0]) }
     })
 
+    // After the account exists, and never in a way that can fail it.
+    await issueVerification(result.user)
+
     res.status(201).json({
       token: sign(result.user),
       user: publicUser(result.user),
@@ -177,6 +249,7 @@ app.post('/api/auth/signup', asyncRoute(async (req, res) => {
     if (error.code === '23505') {
       const field = error.constraint === 'cards_username_key' ? 'username' : 'email'
       return res.status(409).json({
+        reason: field === 'username' ? 'username-taken' : 'account-exists',
         errors: {
           [field]:
             field === 'username' ? 'That username is already taken.' : 'An account with this email already exists.',
@@ -244,6 +317,17 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
    */
   const loginOnly = req.body.mode === 'login'
 
+  /**
+   * `mode: 'signup'` is the mirror image, and it refuses to *reuse*.
+   *
+   * Without it, pressing "Sign up with Google" with an address that already
+   * has an account quietly signs you in instead — which looks like the signup
+   * worked, and leaves someone convinced they made a second account. Told
+   * plainly that the account exists, they can log in, which is what they
+   * wanted a moment later anyway.
+   */
+  const signupOnly = req.body.mode === 'signup'
+
   // Verify against Google's public keys. Never trust the token's contents
   // before this — the client could have sent anything.
   let payload
@@ -285,13 +369,23 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
       }
     }
 
-    // 3. Brand new account: create the user and an unpublished card — unless
+    // 3. The signup page may not adopt an existing account, however it was
+    //    found — by Google id or by email.
+    if (user && signupOnly) return { conflict: true, email: user.email }
+
+    // 4. Brand new account: create the user and an unpublished card — unless
     //    this came from the login page, which may only sign existing people in.
     if (!user && loginOnly) return null
 
     if (!user) {
+      /**
+       * Verified on arrival: the route already refused any Google account
+       * whose `email_verified` claim was false, so asking the person to prove
+       * an address Google has just proven would be theatre.
+       */
       ;({ rows } = await client.query(
-        `INSERT INTO users (full_name, email, google_sub, avatar_url) VALUES ($1,$2,$3,$4) RETURNING *`,
+        `INSERT INTO users (full_name, email, google_sub, avatar_url, email_verified)
+         VALUES ($1,$2,$3,$4,true) RETURNING *`,
         [payload.name || payload.email.split("@")[0], payload.email, payload.sub, picture]
       ))
       user = rows[0]
@@ -311,6 +405,17 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
     return { user, card: toCard(cardRows[0], links) }
   })
 
+  if (result?.conflict) {
+    return res.status(409).json({
+      error: 'An account already exists with this email. Log in instead.',
+      reason: 'account-exists',
+      // Their own address, handed back so the page can name it — and so the
+      // login form it sends them to can be filled in for them.
+      email: result.email,
+      errors: { email: 'An account already exists with this email.' },
+    })
+  }
+
   if (!result) {
     return res.status(404).json({
       error: 'No account uses that Google address yet. Create one first.',
@@ -325,9 +430,75 @@ app.post('/api/auth/google', asyncRoute(async (req, res) => {
   })
 }))
 
+/**
+ * Confirms an address from the link in the email.
+ *
+ * Deliberately unauthenticated: the link is opened in whichever browser the
+ * inbox is on, which is often not the one that signed up. The token is the
+ * proof, so it is 32 random bytes and single-use.
+ */
+app.post('/api/auth/verify', asyncRoute(async (req, res) => {
+  const token = String(req.body?.token || '')
+  if (!token) return res.status(400).json({ error: 'Missing token', reason: 'missing-token' })
+
+  const { rows } = await query(
+    `SELECT v.user_id, v.expires_at < now() AS expired, u.email
+       FROM email_verifications v JOIN users u ON u.id = v.user_id
+      WHERE v.token = $1`,
+    [token]
+  )
+  const record = rows[0]
+
+  if (!record) {
+    /**
+     * An unknown token is also what a *used* token looks like, because the row
+     * is deleted on use. Someone who clicks the link twice — or whose mail
+     * client prefetched it — should not be told their account is broken, so
+     * the honest reading is offered alongside the failure.
+     */
+    return res.status(404).json({ error: 'That link is no longer valid.', reason: 'unknown-token' })
+  }
+  if (record.expired) {
+    await query('DELETE FROM email_verifications WHERE token = $1', [token])
+    return res.status(410).json({ error: 'That link has expired.', reason: 'expired' })
+  }
+
+  await transaction(async (client) => {
+    await client.query('UPDATE users SET email_verified = true WHERE id = $1', [record.user_id])
+    await client.query('DELETE FROM email_verifications WHERE token = $1', [token])
+  })
+
+  res.json({ ok: true, email: record.email })
+}))
+
+/** A fresh link, for the signed-in account. */
+app.post('/api/auth/verify/resend', auth, asyncRoute(async (req, res) => {
+  const { rows } = await query('SELECT * FROM users WHERE id = $1', [req.userId])
+  const user = rows[0]
+  if (!user) return res.status(404).json({ error: 'Account not found' })
+  if (user.email_verified) return res.json({ ok: true, alreadyVerified: true })
+
+  /**
+   * One link a minute. Not a security boundary — the token is unguessable —
+   * but a person hammering the button should not be able to send themselves
+   * twenty emails, each of which invalidates the last.
+   */
+  const { rows: recent } = await query(
+    `SELECT 1 FROM email_verifications
+      WHERE user_id = $1 AND created_at > now() - interval '1 minute'`,
+    [req.userId]
+  )
+  if (recent[0]) {
+    return res.status(429).json({ error: 'A link was just sent. Check your inbox.', reason: 'rate-limited' })
+  }
+
+  const result = await issueVerification(user)
+  res.json({ ok: true, sent: result.sent })
+}))
+
 app.get('/api/auth/me', auth, asyncRoute(async (req, res) => {
   const { rows } = await query(
-    'SELECT id, full_name, email, plan, weekly_email FROM users WHERE id = $1',
+    'SELECT id, full_name, email, plan, weekly_email, email_verified FROM users WHERE id = $1',
     [req.userId]
   )
   if (!rows[0]) return res.status(404).json({ error: 'Account not found' })
@@ -543,8 +714,9 @@ app.put('/api/me/card', auth, asyncRoute(async (req, res) => {
       for (const [index, link] of body.links.entries()) {
         if (!link?.url) continue
         const inserted = await client.query(
-          'INSERT INTO card_links (card_id, platform, url, label, position) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-          [cardId, link.platform || 'custom', link.url, link.label || null, index]
+          `INSERT INTO card_links (card_id, platform, url, label, handle, position)
+           VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+          [cardId, link.platform || 'custom', link.url, link.label || null, link.handle || null, index]
         )
         links.push(inserted.rows[0])
       }
@@ -746,8 +918,12 @@ app.get('/api/me/analytics', auth, asyncRoute(async (req, res) => {
   deltas.views = change(arrivals.recent, arrivals.previous)
 
   const { rows: series } = await query(
+    // Same definitions as the tiles: an arrival is a view, and it is a link
+    // open unless it came from the QR. A chart that adds up differently from
+    // the figures above it is worse than no chart.
     `SELECT to_char(d.day, 'Mon DD') AS day,
-            count(*) FILTER (WHERE e.type = 'view')::int  AS views,
+            count(*) FILTER (WHERE e.type IN ('view','scan'))::int AS views,
+            count(*) FILTER (WHERE e.type = 'view')::int  AS links,
             count(*) FILTER (WHERE e.type = 'click')::int AS clicks,
             count(*) FILTER (WHERE e.type = 'scan')::int  AS scans
        FROM generate_series(current_date - interval '14 days', current_date, interval '1 day') AS d(day)
@@ -792,6 +968,20 @@ const isEntryPoint = process.argv[1] && resolve(process.argv[1]) === fileURLToPa
 if (isEntryPoint) {
   const server = app.listen(PORT, () => {
     console.log(`CardFolio API listening on http://localhost:${PORT}`)
+    /**
+     * Say which mode mail is in, at the one moment someone is looking.
+     *
+     * "There is no email verification" is what a working feature looks like
+     * when nothing is sending: the account is created, the token is issued,
+     * and the link goes to a terminal nobody was reading. Better to announce
+     * it than to let it be discovered.
+     */
+    if (process.env.RESEND_API_KEY) {
+      console.log(`  Verification email: sending via Resend as ${process.env.MAIL_FROM || 'onboarding@resend.dev'}`)
+    } else {
+      console.log('  Verification email: NOT SENDING — no RESEND_API_KEY set.')
+      console.log('  Links will be printed here instead. See .env.example to enable sending.')
+    }
   })
 
   for (const signal of ['SIGINT', 'SIGTERM']) {

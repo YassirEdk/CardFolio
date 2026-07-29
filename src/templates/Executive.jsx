@@ -1,5 +1,6 @@
 import { ArrowUpRight, MapPin } from 'lucide-react'
 import { Avatar, ActionRow, PoweredBy, LogoMark, contactItems, socialItems, linkProps } from './shared'
+import { useT } from '../lib/i18n'
 import { cx } from '../components/ui'
 
 /**
@@ -104,7 +105,8 @@ function ContactTile({ item, accent, wide }) {
  */
 export default function Executive({ card, onSaveContact, onShare }) {
   const accent = card.accent || '#2E6BE6'
-  const contacts = contactItems(card)
+  const t = useT()
+  const contacts = contactItems(card, t)
   const socials = socialItems(card)
 
   return (
@@ -262,7 +264,7 @@ export default function Executive({ card, onSaveContact, onShare }) {
 
         {contacts.length > 0 && (
           <section className="mt-6" aria-label="Contact details">
-            <SectionRule>Contact</SectionRule>
+            <SectionRule>{t('card.contact')}</SectionRule>
             <div className="grid grid-cols-2 gap-2.5">
               {layoutContacts(contacts).map(({ item, wide }) => (
                 <ContactTile key={item.key} item={item} accent={accent} wide={wide} />
@@ -273,7 +275,7 @@ export default function Executive({ card, onSaveContact, onShare }) {
 
         {socials.length > 0 && (
           <section className="mt-6" aria-label="Social profiles">
-            <SectionRule>Profiles</SectionRule>
+            <SectionRule>{t('card.profiles')}</SectionRule>
             <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
               {socials.map((link, index) => (
                 <a

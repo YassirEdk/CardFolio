@@ -16,6 +16,7 @@ import {
   Lock,
   LogOut,
   Mail,
+  MailWarning,
   Menu,
   Pencil,
   QrCode as QrCodeIcon,
@@ -56,17 +57,21 @@ import {
 import { SITE_DOMAIN } from '../data/mockData'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { useT } from '../lib/i18n'
+import ThemeToggle from '../components/ThemeToggle'
+import LanguageSelect from '../components/LanguageSelect'
 import { downloadPng, downloadSvg } from '../lib/qr'
 import { photoSrc } from '../lib/image'
 import { ACCENT_COLORS } from '../data/platforms'
 
+// `key` is a translation key: the labels are resolved where they are drawn.
 const NAV = [
-  { to: '/dashboard', end: true, label: 'My Card', icon: CreditCard, tab: true },
-  { to: '/dashboard/edit', label: 'Edit', icon: Pencil, tab: true },
-  { to: '/dashboard/templates', label: 'Templates', icon: LayoutTemplate, tab: true },
-  { to: '/dashboard/qr', label: 'QR Code', icon: QrCodeIcon, tab: true },
-  { to: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/dashboard/settings', label: 'Settings', icon: SettingsIcon },
+  { to: '/dashboard', end: true, key: 'dashboard.myCard', icon: CreditCard, tab: true },
+  { to: '/dashboard/edit', key: 'dashboard.edit', icon: Pencil, tab: true },
+  { to: '/dashboard/templates', key: 'dashboard.templates', icon: LayoutTemplate, tab: true },
+  { to: '/dashboard/qr', key: 'dashboard.qrCode', icon: QrCodeIcon, tab: true },
+  { to: '/dashboard/analytics', key: 'dashboard.analytics', icon: BarChart3 },
+  { to: '/dashboard/settings', key: 'dashboard.settings', icon: SettingsIcon },
 ]
 
 /**
@@ -77,10 +82,11 @@ const NAV = [
  * bottom, where a thumb already is, and padded for the home indicator.
  */
 function MobileTabs() {
+  const t = useT()
   return (
     <nav
-      aria-label="Sections"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+      aria-label={t("dashboard.sections")}
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 dark:border-navy-800 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
     >
       <div className="grid grid-cols-4">
         {NAV.filter((item) => item.tab).map((item) => (
@@ -91,7 +97,7 @@ function MobileTabs() {
             className={({ isActive }) =>
               cx(
                 'flex flex-col items-center gap-1 px-1 py-2.5 text-[11px] font-semibold transition-colors',
-                isActive ? 'text-accent-600' : 'text-slate-500'
+                isActive ? 'text-accent-600 dark:text-accent-300' : 'text-slate-500 dark:text-slate-400'
               )
             }
           >
@@ -100,12 +106,12 @@ function MobileTabs() {
                 <span
                   className={cx(
                     'grid h-8 w-14 place-items-center rounded-md transition-colors',
-                    isActive ? 'bg-accent-50' : 'bg-transparent'
+                    isActive ? 'bg-accent-50 dark:bg-accent-900/30' : 'bg-transparent'
                   )}
                 >
                   <item.icon size={18} aria-hidden="true" />
                 </span>
-                {item.label}
+                {t(item.key)}
               </>
             )}
           </NavLink>
@@ -121,8 +127,8 @@ function PageHeader({ title, description, actions }) {
   return (
     <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-navy-900">{title}</h1>
-        {description && <p className="mt-1.5 text-sm text-slate-600">{description}</p>}
+        <h1 className="text-2xl font-bold tracking-tight text-navy-900 dark:text-white">{title}</h1>
+        {description && <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 flex-wrap gap-2.5">{actions}</div>}
     </div>
@@ -131,9 +137,9 @@ function PageHeader({ title, description, actions }) {
 
 /** The spans a stat tile can be read over. `total` is every event ever. */
 const STAT_RANGES = [
-  { id: 'day', label: 'Today', short: 'Today' },
-  { id: 'month', label: 'This month', short: 'Month' },
-  { id: 'total', label: 'All time', short: 'All time' },
+  { id: 'day', key: 'today' },
+  { id: 'month', key: 'thisMonth' },
+  { id: 'total', key: 'allTime' },
 ]
 
 /**
@@ -157,6 +163,7 @@ function statValues(analytics, key) {
  * which is what a locked (free) tile wants.
  */
 function StatCard({ icon: Icon, label, value, values, delta, locked = false }) {
+  const t = useT()
   const [range, setRange] = useState('total')
   const filterable = Boolean(values) && !locked
   const shown = filterable ? values[range] : value
@@ -171,7 +178,7 @@ function StatCard({ icon: Icon, label, value, values, delta, locked = false }) {
   return (
     <Panel className="p-5">
       <div className="flex items-start justify-between gap-3">
-        <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 text-slate-600" aria-hidden="true">
+        <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 dark:bg-navy-800 text-slate-600 dark:text-slate-300" aria-hidden="true">
           <Icon size={17} />
         </span>
         {locked ? (
@@ -188,11 +195,11 @@ function StatCard({ icon: Icon, label, value, values, delta, locked = false }) {
                 value={range}
                 onChange={(e) => setRange(e.target.value)}
                 aria-label={`${label} — time range`}
-                className="h-7 cursor-pointer appearance-none rounded-md border border-slate-200 bg-white pl-2.5 pr-6 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:text-navy-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40"
+                className="h-7 cursor-pointer appearance-none rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 pl-2.5 pr-6 text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors hover:border-slate-300 hover:text-navy-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40"
               >
                 {STAT_RANGES.map((option) => (
                   <option key={option.id} value={option.id}>
-                    {option.short}
+                    {t(`dashboard.${option.key}`)}
                   </option>
                 ))}
               </select>
@@ -207,15 +214,15 @@ function StatCard({ icon: Icon, label, value, values, delta, locked = false }) {
       </div>
 
       {locked ? (
-        <p className="mt-4 select-none text-2xl font-bold tracking-tight text-navy-900 blur-[5px]" aria-hidden="true">
+        <p className="mt-4 select-none text-2xl font-bold tracking-tight text-navy-900 dark:text-white blur-[5px]" aria-hidden="true">
           ••••
         </p>
       ) : (
-        <p className="mt-4 flex items-baseline gap-2 text-2xl font-bold tracking-tight text-navy-900">
+        <p className="mt-4 flex items-baseline gap-2 text-2xl font-bold tracking-tight text-navy-900 dark:text-white">
           {(shown || 0).toLocaleString()}
           {showTrend && (
             <span
-              title="Compared with the seven days before"
+              title={t('dashboard.comparedWith')}
               className={cx(
                 'inline-flex items-center gap-0.5 text-xs font-semibold',
                 up ? 'text-emerald-600' : 'text-red-600'
@@ -229,12 +236,12 @@ function StatCard({ icon: Icon, label, value, values, delta, locked = false }) {
           )}
         </p>
       )}
-      <p className="mt-0.5 text-sm text-slate-500">
+      <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
         {label}
         {filterable && range !== 'total' && (
           <span className="text-slate-400">
             {' · '}
-            {STAT_RANGES.find((option) => option.id === range).label.toLowerCase()}
+            {t(`dashboard.${STAT_RANGES.find((option) => option.id === range).key}`).toLowerCase()}
           </span>
         )}
         {locked && <span className="sr-only"> — available on the Pro plan</span>}
@@ -249,6 +256,7 @@ function StatCard({ icon: Icon, label, value, values, delta, locked = false }) {
  * once — falling back to an initial when there is none or it fails to load.
  */
 function AccountMenu({ card, user, onLogout, avatarFailed, onAvatarError }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -288,7 +296,7 @@ function AccountMenu({ card, user, onLogout, avatarFailed, onAvatarError }) {
             src={photoSrc(card.photo, 108)}
             alt=""
             onError={onAvatarError}
-            className="h-9 w-9 rounded-md bg-slate-200 object-cover"
+            className="h-9 w-9 rounded-md bg-slate-200 dark:bg-navy-800 object-cover"
           />
         ) : (
           <span
@@ -303,13 +311,13 @@ function AccountMenu({ card, user, onLogout, avatarFailed, onAvatarError }) {
       {open && (
         <div
           role="menu"
-          className="animate-toast-in absolute right-0 top-12 z-50 w-64 overflow-hidden rounded-md border border-slate-200 bg-white shadow-[var(--shadow-lift)]"
+          className="animate-toast-in absolute right-0 top-12 z-50 w-64 overflow-hidden rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 shadow-[var(--shadow-lift)]"
         >
-          <div className="border-b border-slate-100 px-4 py-3">
-            <p className="truncate text-sm font-semibold text-navy-900">{card.fullName || 'Your account'}</p>
+          <div className="border-b border-slate-100 dark:border-navy-800 px-4 py-3">
+            <p className="truncate text-sm font-semibold text-navy-900 dark:text-white">{card.fullName || 'Your account'}</p>
             {/* The account email, not the card's contact email — those are two
                 different fields and can differ. */}
-            <p className="mt-0.5 truncate text-xs text-slate-500">{user?.email}</p>
+            <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>
           </div>
           <button
             type="button"
@@ -318,10 +326,23 @@ function AccountMenu({ card, user, onLogout, avatarFailed, onAvatarError }) {
               setOpen(false)
               onLogout()
             }}
-            className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm font-semibold text-navy-900 transition-colors hover:bg-slate-50"
+            /**
+             * Red on hover, not at rest.
+             *
+             * Signing out is not destructive — nothing is lost, you log back
+             * in — so it does not earn a red button sitting in the menu. It is
+             * the one item here that ends your session, though, so it answers
+             * in red once the pointer is on it: a warning at the moment of
+             * committing, not a permanent alarm.
+             */
+            className="group flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm font-semibold text-navy-900 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-white dark:hover:bg-red-500/10 dark:hover:text-red-400"
           >
-            <LogOut size={16} className="text-slate-400" aria-hidden="true" />
-            Sign out
+            <LogOut
+              size={16}
+              className="rtl-flip text-slate-400 transition-colors group-hover:text-red-600 dark:group-hover:text-red-400"
+              aria-hidden="true"
+            />
+            {t('common.logout')}
           </button>
         </div>
       )}
@@ -355,19 +376,19 @@ function SkipNotice({ onClose }) {
       aria-labelledby="skip-notice-title"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
-      <div className="animate-dialog-in w-full max-w-md rounded-md border border-slate-200 bg-white p-6 text-center shadow-[var(--shadow-lift)]">
+      <div className="animate-dialog-in w-full max-w-md rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 p-6 text-center shadow-[var(--shadow-lift)]">
         <span
-          className="mx-auto grid h-12 w-12 place-items-center rounded-md bg-accent-50 text-accent-600"
+          className="mx-auto grid h-12 w-12 place-items-center rounded-md bg-accent-50 dark:bg-accent-900/30 text-accent-600 dark:text-accent-300"
           aria-hidden="true"
         >
           <Pencil size={22} />
         </span>
-        <h2 id="skip-notice-title" className="mt-4 text-lg font-bold text-navy-900">
+        <h2 id="skip-notice-title" className="mt-4 text-lg font-bold text-navy-900 dark:text-white">
           Your card is live
         </h2>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+        <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
           You skipped the rest of the setup, which is fine — nothing is locked in. Your photo, contact
-          details, links and design all live under <span className="font-semibold text-navy-900">Edit</span>,
+          details, links and design all live under <span className="font-semibold text-navy-900 dark:text-white">Edit</span>,
           and every change is published the moment you save it.
         </p>
 
@@ -393,6 +414,7 @@ function SkipNotice({ onClose }) {
 }
 
 function CopyLinkRow({ url }) {
+  const t = useT()
   const toast = useToast()
 
   async function copy() {
@@ -406,18 +428,60 @@ function CopyLinkRow({ url }) {
 
   return (
     <div className="flex flex-col gap-2.5 sm:flex-row">
-      <div className="flex h-11 min-w-0 flex-1 items-center rounded-md border border-slate-300 bg-slate-50 px-3.5">
-        <span className="truncate text-sm font-medium text-navy-900">{url}</span>
+      <div className="flex h-11 min-w-0 flex-1 items-center rounded-md border border-slate-300 dark:border-navy-700 bg-slate-50 dark:bg-navy-950 px-3.5">
+        <span className="truncate text-sm font-medium text-navy-900 dark:text-white">{url}</span>
       </div>
       <Button type="button" variant="secondary" onClick={copy}>
         <Copy size={15} aria-hidden="true" />
-        Copy link
+        {t('dashboard.copyLink')}
       </Button>
     </div>
   )
 }
 
+/** How long each traffic line takes to draw itself in, and the gap between them. */
+const DRAW_MS = 1400
+const DRAW_STAGGER_MS = 220
+
+/** The three series, in the order they draw. */
+const TRAFFIC_LINES = [
+  { key: 'views', name: 'Views', color: '#0F2544' },
+  { key: 'links', name: 'Link opens', color: '#2E6BE6' },
+  { key: 'scans', name: 'QR scans', color: '#94a3b8' },
+]
+
 function TrafficChart({ series, compact = false }) {
+  /**
+   * The draw-in, run once and run properly.
+   *
+   * Recharts only traces a line — dash offset running left to right — on a
+   * line's *first* render. The chart mounts before the analytics request comes
+   * back, so its first render is of an empty array; by the time the figures
+   * arrive it treats them as a data change and slides the finished line into
+   * place instead of drawing it.
+   *
+   * Remounting the lines the moment real data lands is what makes their first
+   * render the one that has something in it. `drawKey` does that, and being a
+   * counter rather than a flag means it can only ever fire once.
+   *
+   * It matters that it is once: the dashboard re-reads its figures every few
+   * seconds, and replaying the animation on every poll would leave the page
+   * permanently redrawing itself. After the pass, updates move the line.
+   */
+  const hasData = series.length > 0
+  const [drawKey, setDrawKey] = useState(0)
+  const [drawing, setDrawing] = useState(true)
+
+  useEffect(() => {
+    if (!hasData || drawKey > 0) return
+    setDrawKey(1)
+    const timer = setTimeout(
+      () => setDrawing(false),
+      DRAW_MS + TRAFFIC_LINES.length * DRAW_STAGGER_MS + 200
+    )
+    return () => clearTimeout(timer)
+  }, [hasData, drawKey])
+
   return (
     <div className={compact ? 'h-56' : 'h-80'}>
       <ResponsiveContainer width="100%" height="100%">
@@ -440,9 +504,43 @@ function TrafficChart({ series, compact = false }) {
               fontSize: 12,
             }}
           />
-          <Line type="monotone" dataKey="views" name="Views" stroke="#0F2544" strokeWidth={2} dot={false} />
-          <Line type="monotone" dataKey="clicks" name="Link clicks" stroke="#2E6BE6" strokeWidth={2} dot={false} />
-          <Line type="monotone" dataKey="scans" name="QR scans" stroke="#94a3b8" strokeWidth={2} dot={false} />
+          {TRAFFIC_LINES.map((line, i) => (
+            <Line
+              // Changing key remounts the line, which is what lets Recharts
+              // treat a render that finally has data as its first one.
+              key={`${line.key}-${drawKey}`}
+              /**
+               * Straight segments between readings, not a smoothed curve.
+               *
+               * `monotone` invents a shape between two days that nobody
+               * measured, rounding a spike into a swell. Point to point is how
+               * a price chart is drawn, and it is also the honest reading:
+               * every corner in the line is a day that actually happened.
+               */
+              type="linear"
+              dataKey={line.key}
+              name={line.name}
+              stroke={line.color}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              dot={false}
+              activeDot={{ r: 3.5, strokeWidth: 2, stroke: '#fff' }}
+              /**
+               * Recharts draws a line by running a dash offset along it, which
+               * is a left-to-right reveal — the trace arriving as if it were
+               * being recorded. The series are staggered so they read as three
+               * separate lines rather than one thick one.
+               */
+              isAnimationActive={drawing}
+              animationBegin={i * DRAW_STAGGER_MS}
+              animationDuration={DRAW_MS}
+              // Linear, because this is a pen moving across the chart: an
+              // eased trace slows down at the end, which reads as the line
+              // settling into place rather than as it being drawn.
+              animationEasing="linear"
+            />
+          ))}
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -452,11 +550,12 @@ function TrafficChart({ series, compact = false }) {
 /* ---------------------------------------------------------------- views */
 
 function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
+  const t = useT()
   return (
     <>
       <PageHeader
-        title={`Welcome back, ${(card.fullName || 'there').split(' ')[0]}`}
-        description="Your card is live and collecting views."
+        title={t('dashboard.welcomeBack', { name: (card.fullName || '').split(' ')[0] })}
+        description={t('dashboard.cardLive')}
         actions={
           <>
             <Button
@@ -466,12 +565,12 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
               rel="noopener noreferrer"
               variant="secondary"
             >
-              <ExternalLink size={15} aria-hidden="true" />
-              View public card
+              <ExternalLink size={15} aria-hidden="true" className="rtl-flip" />
+              {t('dashboard.viewPublicCard')}
             </Button>
             <Button as={Link} to="/dashboard/edit">
               <Pencil size={15} aria-hidden="true" />
-              Edit card
+              {t('dashboard.editCard')}
             </Button>
           </>
         }
@@ -484,8 +583,8 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
               real card at your link doesn't say better. */}
           <Panel className="hidden p-6 lg:block">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-navy-900">Your card</h2>
-              <Badge tone="success">Published</Badge>
+              <h2 className="text-sm font-semibold text-navy-900 dark:text-white">{t('dashboard.yourCard')}</h2>
+              <Badge tone="success">{t('dashboard.published')}</Badge>
             </div>
             <div className="flex justify-center">
               <PhoneFrame scale="sm">
@@ -497,8 +596,8 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
 
         <div className="space-y-6">
           <Panel className="p-6">
-            <h2 className="text-sm font-semibold text-navy-900">Public link</h2>
-            <p className="mb-4 mt-1 text-sm text-slate-500">Share this anywhere — email signature, bio, CV.</p>
+            <h2 className="text-sm font-semibold text-navy-900 dark:text-white">{t('dashboard.publicLink')}</h2>
+            <p className="mb-4 mt-1 text-sm text-slate-500 dark:text-slate-400">{t('dashboard.publicLinkHint')}</p>
             <CopyLinkRow url={publicUrl} />
           </Panel>
 
@@ -507,7 +606,7 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
           <div className="grid gap-6 sm:grid-cols-3">
             <StatCard
               icon={Eye}
-              label="Card views"
+              label={t('dashboard.cardViews')}
               value={analytics.stats.views}
               values={statValues(analytics, 'views')}
               delta={analytics.deltas?.views}
@@ -515,7 +614,7 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
             />
             <StatCard
               icon={LinkIcon}
-              label="Link opens"
+              label={t('dashboard.linkOpens')}
               value={analytics.stats.links}
               values={statValues(analytics, 'links')}
               delta={analytics.deltas?.links}
@@ -523,7 +622,7 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
             />
             <StatCard
               icon={ScanLine}
-              label="QR scans"
+              label={t('dashboard.qrScans')}
               value={analytics.stats.scans}
               values={statValues(analytics, 'scans')}
               delta={analytics.deltas?.scans}
@@ -535,8 +634,8 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
             <Panel className="p-6">
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-navy-900">Traffic</h2>
-                  <p className="mt-0.5 text-sm text-slate-500">Last 15 days</p>
+                  <h2 className="text-sm font-semibold text-navy-900 dark:text-white">{t('dashboard.traffic')}</h2>
+                  <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{t('dashboard.last15Days')}</p>
                 </div>
                 <Button as={Link} to="/dashboard/analytics" variant="ghost" size="sm">
                   Full analytics
@@ -547,11 +646,11 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
           ) : (
             <Panel className="flex flex-wrap items-center justify-between gap-4 p-6">
               <div>
-                <h2 className="inline-flex items-center gap-2 text-sm font-semibold text-navy-900">
+                <h2 className="inline-flex items-center gap-2 text-sm font-semibold text-navy-900 dark:text-white">
                   <Lock size={14} className="text-slate-400" aria-hidden="true" />
                   Traffic
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   Clicks, QR scans and the 15-day trend come with Pro.
                 </p>
               </div>
@@ -562,10 +661,10 @@ function Overview({ card, publicUrl, qrUrl, analytics, pro }) {
           )}
 
           <Panel className="p-6">
-            <h2 className="text-sm font-semibold text-navy-900">QR code</h2>
-            <p className="mb-4 mt-1 text-sm text-slate-500">Print-ready in raster or vector.</p>
+            <h2 className="text-sm font-semibold text-navy-900 dark:text-white">QR code</h2>
+            <p className="mb-4 mt-1 text-sm text-slate-500 dark:text-slate-400">{t('dashboard.qrPrintReady')}</p>
             <div className="flex flex-col items-center gap-5 sm:flex-row">
-              <div className="rounded-md border border-slate-200 p-3">
+              <div className="rounded-md border border-slate-200 dark:border-navy-800 p-3">
                 <QrCode value={qrUrl} size={128} color={card.accent} />
               </div>
               <div className="flex w-full flex-col gap-2.5 sm:w-auto">
@@ -601,6 +700,7 @@ const EDIT_TABS = [
 ]
 
 function EditCard({ card, setCard, pro }) {
+  const t = useT()
   const toast = useToast()
   const [tab, setTab] = useState('identity')
   const [draft, setDraft] = useState(card)
@@ -654,8 +754,8 @@ function EditCard({ card, setCard, pro }) {
   return (
     <form onSubmit={save}>
       <PageHeader
-        title="Edit card"
-        description="Every change appears in the preview instantly. Nothing is public until you save."
+        title={t('dashboard.editTitle')}
+        description={t('dashboard.editHint')}
         actions={
           <Button type="submit" loading={saving} disabled={!dirty}>
             {dirty ? 'Save changes' : 'Saved'}
@@ -665,7 +765,7 @@ function EditCard({ card, setCard, pro }) {
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div>
-          <div className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="Card sections">
+          <div className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-navy-800" role="tablist" aria-label="Card sections">
             {EDIT_TABS.map((item) => (
               <button
                 key={item.id}
@@ -678,8 +778,8 @@ function EditCard({ card, setCard, pro }) {
                 className={cx(
                   '-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors',
                   tab === item.id
-                    ? 'border-accent-500 text-accent-600'
-                    : 'border-transparent text-slate-500 hover:text-navy-900'
+                    ? 'border-accent-500 text-accent-600 dark:text-accent-300'
+                    : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-navy-900'
                 )}
               >
                 {item.label}
@@ -702,7 +802,7 @@ function EditCard({ card, setCard, pro }) {
           <div className="mt-6 flex items-center justify-end gap-3">
             {dirty ? (
               <>
-                <p className="text-sm text-slate-500">You have unsaved changes</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{t('dashboard.unsavedChanges')}</p>
                 <Button type="submit" size="lg" loading={saving}>
                   Save changes
                 </Button>
@@ -716,8 +816,8 @@ function EditCard({ card, setCard, pro }) {
                 size="lg"
                 variant="secondary"
               >
-                <ExternalLink size={16} aria-hidden="true" />
-                Open card
+                <ExternalLink size={16} aria-hidden="true" className="rtl-flip" />
+                {t('dashboard.openCard')}
               </Button>
             )}
           </div>
@@ -725,7 +825,7 @@ function EditCard({ card, setCard, pro }) {
 
         <aside className="hidden lg:block">
           <div className="sticky top-24">
-            <h2 className="mb-4 text-sm font-semibold text-navy-900">Live preview</h2>
+            <h2 className="mb-4 text-sm font-semibold text-navy-900 dark:text-white">Live preview</h2>
             <PhoneFrame scale="sm" className="mx-auto">
               <CardView card={draft} interactive={false} />
             </PhoneFrame>
@@ -743,12 +843,12 @@ function EditCard({ card, setCard, pro }) {
  */
 function DesktopPreview({ card }) {
   return (
-    <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[var(--shadow-card)]">
-      <div className="flex items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-3 py-2" aria-hidden="true">
+    <div className="overflow-hidden rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 shadow-[var(--shadow-card)]">
+      <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 px-3 py-2" aria-hidden="true">
         <span className="h-2 w-2 rounded-md bg-slate-300" />
         <span className="h-2 w-2 rounded-md bg-slate-300" />
         <span className="h-2 w-2 rounded-md bg-slate-300" />
-        <span className="ml-2 h-3 flex-1 rounded-md bg-slate-200" />
+        <span className="ml-2 h-3 flex-1 rounded-md bg-slate-200 dark:bg-navy-800" />
       </div>
       {/* A window shape, not a height that follows the content. The desktop
           layouts are built on `min-h-dvh`, and inside a scaled preview `dvh`
@@ -766,6 +866,7 @@ function DesktopPreview({ card }) {
 }
 
 function TemplatesView({ card, setCard, pro }) {
+  const t = useT()
   const toast = useToast()
   // The preview follows the pending pick, so you can see a template before
   // Apply commits it. Accent changes still save on click and arrive via `card`.
@@ -776,8 +877,8 @@ function TemplatesView({ card, setCard, pro }) {
   return (
     <>
       <PageHeader
-        title="Templates"
-        description="Switch design and accent colour. Your link and QR code stay the same."
+        title={t('dashboard.templatesTitle')}
+        description={t('dashboard.templatesHint')}
       />
       {/* The preview column is sized to what it holds: the `md` phone plus its
           bezel, or a wider slot for the desktop layout — at 340px a 1280px
@@ -810,7 +911,7 @@ function TemplatesView({ card, setCard, pro }) {
               that in the way the column started well below the panel, so it
               sits at the top of the row now. */}
           <div className="sticky top-24">
-            <h2 className="text-sm font-semibold text-navy-900">Live preview</h2>
+            <h2 className="text-sm font-semibold text-navy-900 dark:text-white">Live preview</h2>
             {/* Every template ships a phone layout and a desktop one, and a
                 card is seen on both — so both are previewable here. */}
             <ViewToggle view={view} onChange={setView} className="mt-3" />
@@ -832,28 +933,29 @@ function TemplatesView({ card, setCard, pro }) {
 }
 
 function QrView({ card, publicUrl, qrUrl }) {
+  const t = useT()
   const [color, setColor] = useState(card.accent || '#0F2544')
 
   return (
     <>
       <PageHeader
-        title="QR code"
-        description="Generated from your card URL. Update your details freely — the code keeps working."
+        title={t('dashboard.qrTitle')}
+        description={t('dashboard.qrHint')}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel className="flex flex-col items-center p-8">
-          <div className="rounded-md border border-slate-200 p-5">
+          <div className="rounded-md border border-slate-200 dark:border-navy-800 p-5">
             <QrCode value={qrUrl} size={220} color={color} />
           </div>
-          <p className="mt-5 text-sm font-medium text-navy-900">{publicUrl}</p>
-          <p className="mt-1 text-xs text-slate-500">Error correction level M · scannable from ~1.5m at A5 size</p>
+          <p className="mt-5 text-sm font-medium text-navy-900 dark:text-white">{publicUrl}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('dashboard.qrErrorLevel')}</p>
         </Panel>
 
         <div className="space-y-6">
           <Panel className="p-6">
-            <h2 className="text-sm font-semibold text-navy-900">Code colour</h2>
-            <p className="mb-4 mt-1 text-sm text-slate-500">Dark colours scan most reliably.</p>
+            <h2 className="text-sm font-semibold text-navy-900 dark:text-white">{t('dashboard.codeColour')}</h2>
+            <p className="mb-4 mt-1 text-sm text-slate-500 dark:text-slate-400">{t('dashboard.codeColourHint')}</p>
             <div role="radiogroup" aria-label="QR code colour" className="flex flex-wrap gap-2.5">
               {[{ name: 'Classic navy', value: '#0F2544' }, ...ACCENT_COLORS].map((option) => (
                 <button
@@ -875,8 +977,8 @@ function QrView({ card, publicUrl, qrUrl }) {
           </Panel>
 
           <Panel className="p-6">
-            <h2 className="text-sm font-semibold text-navy-900">Download</h2>
-            <p className="mb-4 mt-1 text-sm text-slate-500">
+            <h2 className="text-sm font-semibold text-navy-900 dark:text-white">{t('dashboard.download')}</h2>
+            <p className="mb-4 mt-1 text-sm text-slate-500 dark:text-slate-400">
               PNG for screens and slides, SVG for anything printed.
             </p>
             <div className="grid gap-2.5 sm:grid-cols-2">
@@ -892,8 +994,8 @@ function QrView({ card, publicUrl, qrUrl }) {
           </Panel>
 
           <Panel className="p-6">
-            <h2 className="mb-4 text-sm font-semibold text-navy-900">Where to use it</h2>
-            <ul className="space-y-2.5 text-sm text-slate-600">
+            <h2 className="mb-4 text-sm font-semibold text-navy-900 dark:text-white">{t('dashboard.whereToUse')}</h2>
+            <ul className="space-y-2.5 text-sm text-slate-600 dark:text-slate-300">
               {[
                 'Printed cards, flyers and roll-up banners',
                 'Your laptop lid, phone case or name badge',
@@ -919,18 +1021,19 @@ function QrView({ card, publicUrl, qrUrl }) {
  * never fetched — the API stops at the view total for a free plan.
  */
 function AnalyticsLocked() {
+  const t = useT()
   const [upgrading, setUpgrading] = useState(false)
 
   return (
     <>
-      <PageHeader title="Analytics" description="How people are finding and using your card." />
+      <PageHeader title={t('dashboard.analyticsTitle')} description={t('dashboard.analyticsHint')} />
 
       <div className="max-w-2xl">
         <Panel className="p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-navy-900">Card views</h2>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <h2 className="text-sm font-semibold text-navy-900 dark:text-white">{t('dashboard.cardViews')}</h2>
+              <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
                 We are counting every visit — Pro shows you the number.
               </p>
             </div>
@@ -940,7 +1043,7 @@ function AnalyticsLocked() {
             </Badge>
           </div>
           <p
-            className="mt-5 select-none text-4xl font-bold tracking-tight text-navy-900 blur-[6px]"
+            className="mt-5 select-none text-4xl font-bold tracking-tight text-navy-900 dark:text-white blur-[6px]"
             aria-hidden="true"
           >
             ••••
@@ -948,14 +1051,14 @@ function AnalyticsLocked() {
         </Panel>
 
         <Panel className="mt-6 p-6">
-          <h2 className="text-sm font-semibold text-navy-900">See where they come from</h2>
-          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+          <h2 className="text-sm font-semibold text-navy-900 dark:text-white">See where they come from</h2>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
             Pro adds link clicks and QR scans, the 15-day trend for all three, and which of your links people
             actually tap.
           </p>
           <ul className="mt-4 space-y-2">
             {['Link clicks and QR scans', 'Daily trend across 15 days', 'Your most-tapped links'].map((item) => (
-              <li key={item} className="flex items-start gap-2 text-sm text-slate-600">
+              <li key={item} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <Lock size={14} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
                 {item}
               </li>
@@ -979,6 +1082,7 @@ function AnalyticsLocked() {
 }
 
 function Analytics({ card, analytics, pro }) {
+  const t = useT()
   const topLinks = analytics.topLinks || []
   const maxLinkClicks = Math.max(1, ...topLinks.map((link) => link.clicks))
 
@@ -986,26 +1090,26 @@ function Analytics({ card, analytics, pro }) {
 
   return (
     <>
-      <PageHeader title="Analytics" description="How people are finding and using your card." />
+      <PageHeader title={t('dashboard.analyticsTitle')} description={t('dashboard.analyticsHint')} />
 
       <div className="grid gap-6 sm:grid-cols-3">
         <StatCard
           icon={Eye}
-          label="Card views"
+          label={t('dashboard.cardViews')}
           value={analytics.stats.views}
           values={statValues(analytics, 'views')}
           delta={analytics.deltas?.views}
         />
         <StatCard
           icon={LinkIcon}
-          label="Link opens"
+          label={t('dashboard.linkOpens')}
           value={analytics.stats.links}
           values={statValues(analytics, 'links')}
           delta={analytics.deltas?.links}
         />
         <StatCard
           icon={ScanLine}
-          label="QR scans"
+          label={t('dashboard.qrScans')}
           value={analytics.stats.scans}
           values={statValues(analytics, 'scans')}
           delta={analytics.deltas?.scans}
@@ -1015,10 +1119,10 @@ function Analytics({ card, analytics, pro }) {
       <Panel className="mt-6 p-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-sm font-semibold text-navy-900">Views, clicks and scans</h2>
-            <p className="mt-0.5 text-sm text-slate-500">Last 15 days</p>
+            <h2 className="text-sm font-semibold text-navy-900 dark:text-white">{t('dashboard.viewsClicksScans')}</h2>
+            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{t('dashboard.last15Days')}</p>
           </div>
-          <div className="flex flex-wrap gap-4 text-xs font-medium text-slate-600">
+          <div className="flex flex-wrap gap-4 text-xs font-medium text-slate-600 dark:text-slate-300">
             {[
               { label: 'Views', color: '#0F2544' },
               { label: 'Link clicks', color: '#2E6BE6' },
@@ -1035,15 +1139,15 @@ function Analytics({ card, analytics, pro }) {
       </Panel>
 
       <Panel className="mt-6 p-6">
-        <h2 className="mb-5 text-sm font-semibold text-navy-900">Most clicked links</h2>
+        <h2 className="mb-5 text-sm font-semibold text-navy-900 dark:text-white">{t('dashboard.mostClicked')}</h2>
         <ul className="space-y-4">
           {topLinks.map((link) => (
             <li key={link.id}>
               <div className="mb-1.5 flex items-center justify-between text-sm">
-                <span className="font-medium capitalize text-navy-900">{link.platform}</span>
-                <span className="text-slate-500">{link.clicks} clicks</span>
+                <span className="font-medium capitalize text-navy-900 dark:text-white">{link.platform}</span>
+                <span className="text-slate-500 dark:text-slate-400">{link.clicks} clicks</span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-md bg-slate-100">
+              <div className="h-1.5 overflow-hidden rounded-md bg-slate-100 dark:bg-navy-800">
                 <div
                   className="h-full rounded-md bg-accent-500"
                   style={{ width: `${(link.clicks / maxLinkClicks) * 100}%` }}
@@ -1080,17 +1184,17 @@ function PanelHeader({ icon: Icon, title, description, tone = 'slate', badge, cl
       <span
         className={cx(
           'grid h-9 w-9 shrink-0 place-items-center rounded-md',
-          tone === 'red' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'
+          tone === 'red' ? 'bg-red-50 text-red-600' : 'bg-slate-100 dark:bg-navy-800 text-slate-600 dark:text-slate-300'
         )}
         aria-hidden="true"
       >
         <Icon size={17} />
       </span>
       <div className="min-w-0 flex-1">
-        <h2 className={cx('text-sm font-semibold', tone === 'red' ? 'text-red-700' : 'text-navy-900')}>
+        <h2 className={cx('text-sm font-semibold', tone === 'red' ? 'text-red-700' : 'text-navy-900 dark:text-white')}>
           {title}
         </h2>
-        <p className="mt-0.5 text-sm text-slate-500">{description}</p>
+        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{description}</p>
       </div>
       {badge}
     </div>
@@ -1098,6 +1202,7 @@ function PanelHeader({ icon: Icon, title, description, tone = 'slate', badge, cl
 }
 
 function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount }) {
+  const t = useT()
   const toast = useToast()
   const navigate = useNavigate()
   const [username, setUsername] = useState(card.username)
@@ -1177,7 +1282,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
 
   return (
     <>
-      <PageHeader title="Settings" description="Account, URL and privacy preferences." />
+      <PageHeader title={t('settings.title')} description={t('settings.subtitle')} />
 
       {/* Two columns on wide screens: the card's public identity on the left,
           the account and its preferences on the right. The panels are direct
@@ -1193,12 +1298,8 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
         <Panel className="p-6">
           <PanelHeader
             icon={LinkIcon}
-            title="Card URL"
-            description={
-              pro
-                ? 'Changing this breaks any QR code or link you have already shared.'
-                : 'We picked this for you. Choosing your own is part of the Pro plan.'
-            }
+            title={t('settings.cardUrl')}
+            description={pro ? t('settings.cardUrlProHint') : t('settings.cardUrlFreeHint')}
             badge={
               !pro && (
                 <Badge tone="slate">
@@ -1224,21 +1325,21 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
           >
             {/* min-w-0: without it the prefix + input refuse to shrink below
                 their content width and push the button out of the panel. */}
-            <Field label="Username" htmlFor="settings-username" className="min-w-0 flex-1">
+            <Field label={t('settings.username')} htmlFor="settings-username" className="min-w-0 flex-1">
               <div
                 className={cx(
-                  'flex h-11 items-center overflow-hidden rounded-md border bg-white focus-within:ring-2 focus-within:ring-accent-500/25',
-                  !pro && 'border-slate-200 bg-slate-50',
+                  'flex h-11 items-center overflow-hidden rounded-md border bg-white dark:bg-navy-900 focus-within:ring-2 focus-within:ring-accent-500/25',
+                  !pro && 'border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950',
                   pro && urlState === 'available' && 'border-emerald-400',
                   pro && (urlState === 'taken' || urlState === 'invalid') && 'border-red-400',
-                  pro && !['available', 'taken', 'invalid'].includes(urlState) && 'border-slate-300'
+                  pro && !['available', 'taken', 'invalid'].includes(urlState) && 'border-slate-300 dark:border-navy-700'
                 )}
               >
                 {/* The origin is fixed; only the handle after the slash is
                     yours to set. On localhost that reads "localhost:5173/". */}
                 <span
                   title={`${SITE_DOMAIN}/`}
-                  className="select-none truncate border-r border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-500"
+                  className="select-none truncate border-r border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 px-3 text-sm font-medium text-slate-500 dark:text-slate-400"
                 >
                   {SITE_DOMAIN}/
                 </span>
@@ -1253,7 +1354,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
                     // without a floor the handle gets squeezed to a few
                     // characters — the one part of the field you are editing.
                     'h-full min-w-[7rem] flex-1 px-3 text-sm focus:outline-none',
-                    pro ? 'text-navy-900' : 'cursor-not-allowed text-slate-500'
+                    pro ? 'text-navy-900 dark:text-white' : 'cursor-not-allowed text-slate-500 dark:text-slate-400'
                   )}
                 />
                 {pro && (
@@ -1272,39 +1373,39 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
                 className="shrink-0"
                 disabled={urlState !== 'available'}
               >
-                Update URL
+                  {t('settings.updateUrl')}
               </Button>
             ) : (
               <Button type="submit" className="shrink-0">
                 <Sparkles size={15} aria-hidden="true" />
-                Go Pro
+                {t('settings.goPro')}
               </Button>
             )}
           </form>
 
           {pro && (
             <div className="mt-2 min-h-5 text-xs font-medium" role="status">
-              {urlState === 'checking' && <span className="text-slate-500">Checking availability…</span>}
+              {urlState === 'checking' && (
+                <span className="text-slate-500 dark:text-slate-400">{t('settings.checking')}</span>
+              )}
               {urlState === 'available' && (
                 <span className="text-emerald-600">
-                  {SITE_DOMAIN}/{username} is available for you
+                  {t('settings.available', { url: `${SITE_DOMAIN}/${username}` })}
                 </span>
               )}
-              {urlState === 'invalid' && (
-                <span className="text-red-600">3–30 characters: lowercase letters, numbers or hyphens</span>
-              )}
+              {urlState === 'invalid' && <span className="text-red-600">{t('settings.invalid')}</span>}
               {urlState === 'taken' && (
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-red-600">
-                  That link is already taken.
+                  {t('settings.taken')}
                   {suggestions.length > 0 && (
-                    <span className="flex flex-wrap items-center gap-1.5 text-slate-500">
-                      Try
+                    <span className="flex flex-wrap items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                      {t('settings.try')}
                       {suggestions.map((suggestion) => (
                         <button
                           key={suggestion}
                           type="button"
                           onClick={() => setUsername(suggestion)}
-                          className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-navy-900 transition-colors hover:border-slate-300 hover:bg-white"
+                          className="rounded-md border border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 px-2 py-0.5 font-semibold text-navy-900 dark:text-white transition-colors hover:border-slate-300 hover:bg-white"
                         >
                           {suggestion}
                         </button>
@@ -1325,7 +1426,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
         </Panel>
 
         <Panel className="p-6">
-          <PanelHeader icon={Mail} title="Account email" description="Used for login and notifications." />
+          <PanelHeader icon={Mail} title={t('settings.accountEmail')} description={t('settings.accountEmailHint')} />
           <form
             className="flex flex-col gap-2.5 sm:flex-row sm:items-end"
             onSubmit={(e) => {
@@ -1333,17 +1434,17 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               toast('Confirmation email sent')
             }}
           >
-            <Field label="Email address" htmlFor="settings-email" className="min-w-0 flex-1">
+            <Field label={t('settings.emailAddress')} htmlFor="settings-email" className="min-w-0 flex-1">
               <Input id="settings-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </Field>
             <Button type="submit" variant="secondary" className="shrink-0">
-              Save email
+              {t('settings.saveEmail')}
             </Button>
           </form>
         </Panel>
 
         <Panel className="p-6">
-          <PanelHeader icon={KeyRound} title="Password" description="Use at least 8 characters." />
+          <PanelHeader icon={KeyRound} title={t('settings.password')} description={t('settings.passwordHint')} />
           <form
             className="space-y-4"
             onSubmit={(e) => {
@@ -1352,7 +1453,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               toast('Password updated')
             }}
           >
-            <Field label="Current password" htmlFor="current-password">
+            <Field label={t('settings.currentPassword')} htmlFor="current-password">
               <Input
                 id="current-password"
                 type="password"
@@ -1361,7 +1462,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
                 onChange={(e) => setPasswords((p) => ({ ...p, current: e.target.value }))}
               />
             </Field>
-            <Field label="New password" htmlFor="new-password">
+            <Field label={t('settings.newPassword')} htmlFor="new-password">
               <Input
                 id="new-password"
                 type="password"
@@ -1371,7 +1472,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               />
             </Field>
             <Button type="submit" variant="secondary">
-              Update password
+              {t('settings.updatePassword')}
             </Button>
           </form>
         </Panel>
@@ -1381,8 +1482,8 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
         <Panel className="space-y-5 p-6">
           <PanelHeader
             icon={SlidersHorizontal}
-            title="Card preferences"
-            description="Branding, search engines and the weekly summary."
+            title={t('settings.cardPreferences')}
+            description={t('settings.cardPreferencesHint')}
             className=""
             badge={
               !pro && (
@@ -1398,10 +1499,8 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
             onChange={(value) =>
               saveCardPref({ hideBranding: value }, value ? 'Branding hidden' : 'Branding shown')
             }
-            label="Hide “Powered by CardFolio”"
-            description={
-              pro ? 'Removes the credit from your card.' : 'Free cards carry a small CardFolio credit.'
-            }
+            label={t('settings.hideBranding')}
+            description={pro ? t('settings.hideBrandingPro') : t('settings.hideBrandingFree')}
             locked={!pro}
             onLocked={() => setUpgrading(true)}
           />
@@ -1413,8 +1512,8 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
                 value ? 'Search engines allowed' : 'Search engines asked to skip your card'
               )
             }
-            label="Allow search engines to index my card"
-            description="Lets people find you by name on Google."
+            label={t('settings.allowIndexing')}
+            description={t('settings.allowIndexingHint')}
             locked={!pro}
             onLocked={() => setUpgrading(true)}
           />
@@ -1423,8 +1522,8 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
             onChange={(value) =>
               saveAccountPref({ weeklyEmail: value }, value ? 'Weekly email on' : 'Weekly email off')
             }
-            label="Weekly performance email"
-            description="A short summary of views, clicks and scans."
+            label={t('settings.weeklyEmail')}
+            description={t('settings.weeklyEmailHint')}
             locked={!pro}
             onLocked={() => setUpgrading(true)}
           />
@@ -1436,8 +1535,8 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
         <PanelHeader
           icon={Trash2}
           tone="red"
-          title="Delete account"
-          description="Permanently removes your card, your username and all analytics. This cannot be undone."
+          title={t('settings.deleteAccount')}
+          description={t('settings.deleteAccountHint')}
         />
         {armed ? (
           <form
@@ -1458,7 +1557,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               }
             }}
           >
-            <Field label="Type DELETE to confirm" htmlFor="confirm-delete" className="sm:max-w-xs sm:flex-1">
+            <Field label={t('settings.typeDelete')} htmlFor="confirm-delete" className="sm:max-w-xs sm:flex-1">
               <Input
                 id="confirm-delete"
                 autoFocus
@@ -1468,7 +1567,7 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
               />
             </Field>
             <Button type="submit" variant="danger" loading={deleting} disabled={confirmDelete !== 'DELETE'}>
-              Delete my account
+              {t('settings.deleteMyAccount')}
             </Button>
             <Button
               type="button"
@@ -1485,17 +1584,67 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
         ) : (
           <div className="flex flex-wrap gap-2.5">
             <Button type="button" variant="danger" onClick={() => setArmed(true)}>
-              Delete account
+              {t('settings.deleteAccount')}
             </Button>
-            <Button type="button" variant="secondary" onClick={onLogout}>
-              <LogOut size={15} aria-hidden="true" />
-              Log out
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onLogout}
+              className="hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:hover:border-red-500/40 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+            >
+              <LogOut size={15} aria-hidden="true" className="rtl-flip" />
+              {t('common.logout')}
             </Button>
           </div>
         )}
         </Panel>
       </div>
     </>
+  )
+}
+
+/**
+ * The nudge for an unconfirmed address.
+ *
+ * A strip above the page rather than a dialog: nothing here is blocked while
+ * the address is unconfirmed — the card is already live — so this informs and
+ * offers the one action, and never stands in the way of the work.
+ */
+function VerifyEmailBanner({ email }) {
+  const t = useT()
+  const toast = useToast()
+  const [sending, setSending] = useState(false)
+
+  async function resend() {
+    setSending(true)
+    try {
+      await api.resendVerification()
+      toast(t('verify.sent'))
+    } catch (error) {
+      toast(error.reason === 'rate-limited' ? t('verify.rateLimited') : error.message, 'info')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="mb-6 flex flex-col gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center dark:border-amber-500/30 dark:bg-amber-500/10">
+      <span
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+        aria-hidden="true"
+      >
+        <MailWarning size={17} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{t('verify.bannerTitle')}</p>
+        <p className="mt-0.5 text-sm leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+          {t('verify.bannerBody', { email })}
+        </p>
+      </div>
+      <Button type="button" variant="secondary" size="sm" onClick={resend} loading={sending} className="shrink-0">
+        {t('verify.resend')}
+      </Button>
+    </div>
   )
 }
 
@@ -1514,6 +1663,7 @@ const EMPTY_ANALYTICS = {
 
 export default function Dashboard() {
   const { user, card, status, saveCard, logout, savePrefs, deleteAccount } = useAuth()
+  const t = useT()
   const [navOpen, setNavOpen] = useState(false)
   const [analytics, setAnalytics] = useState(EMPTY_ANALYTICS)
   const [avatarFailed, setAvatarFailed] = useState(false)
@@ -1579,8 +1729,8 @@ export default function Dashboard() {
 
   if (status === 'loading') {
     return (
-      <div className="grid min-h-dvh place-items-center bg-slate-50">
-        <p className="text-sm text-slate-500" role="status">
+      <div className="grid min-h-dvh place-items-center bg-slate-50 dark:bg-navy-950">
+        <p className="text-sm text-slate-500 dark:text-slate-400" role="status">
           Loading your dashboard…
         </p>
       </div>
@@ -1621,20 +1771,25 @@ export default function Dashboard() {
           className={({ isActive }) =>
             cx(
               'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors',
-              isActive ? 'bg-navy-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-navy-900'
+              // Accent, not ink, for the same reason as the layout toggle: on
+              // the dark theme the sidebar and `navy-900` are one colour, so an
+              // ink-filled row does not read as the selected one.
+              isActive
+                ? 'bg-navy-900 text-white dark:bg-accent-500'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-navy-900 dark:text-slate-300 dark:hover:bg-navy-800 dark:hover:text-white'
             )
           }
         >
           <item.icon size={17} aria-hidden="true" />
-          {item.label}
+          {t(item.key)}
         </NavLink>
       ))}
     </nav>
   )
 
   return (
-    <div className="min-h-dvh bg-slate-50">
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
+    <div className="min-h-dvh bg-slate-50 dark:bg-navy-950">
+      <header className="sticky top-0 z-50 border-b border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900">
         <div className="flex h-16 items-center justify-between gap-4 px-5 lg:px-8">
           <div className="flex items-center gap-3">
             <button
@@ -1642,7 +1797,7 @@ export default function Dashboard() {
               onClick={() => setNavOpen((value) => !value)}
               aria-expanded={navOpen}
               aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
-              className="grid h-10 w-10 place-items-center rounded-md border border-slate-200 text-navy-900 lg:hidden"
+              className="grid h-10 w-10 place-items-center rounded-md border border-slate-200 dark:border-navy-800 text-navy-900 dark:text-white lg:hidden"
             >
               {navOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
@@ -1654,29 +1809,33 @@ export default function Dashboard() {
             <Badge tone={pro ? 'navy' : 'slate'} className="hidden sm:inline-flex">
               {pro ? 'Pro plan' : 'Free plan'}
             </Badge>
+            <LanguageSelect className="hidden sm:block" />
+            <ThemeToggle />
             <AccountMenu card={card} user={user} onLogout={logout} avatarFailed={avatarFailed} onAvatarError={() => setAvatarFailed(true)} />
           </div>
         </div>
       </header>
 
       <div className="flex">
-        <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-60 shrink-0 border-r border-slate-200 bg-white p-4 lg:block">
+        <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-60 shrink-0 border-r border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 p-4 lg:block">
           {sidebar}
-          <div className="mt-6 rounded-md border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold text-navy-900">Your link</p>
-            <p title={`${SITE_DOMAIN}/${card.username}`} className="mt-1 truncate text-xs text-slate-500">
+          <div className="mt-6 rounded-md border border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 p-4">
+            <p className="text-xs font-bold text-navy-900 dark:text-white">{t('dashboard.yourLink')}</p>
+            <p title={`${SITE_DOMAIN}/${card.username}`} className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
               {SITE_DOMAIN}/{card.username}
             </p>
           </div>
         </aside>
 
         {navOpen && (
-          <div className="fixed inset-x-0 top-16 z-40 border-b border-slate-200 bg-white p-4 lg:hidden">{sidebar}</div>
+          <div className="fixed inset-x-0 top-16 z-40 border-b border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 p-4 lg:hidden">{sidebar}</div>
         )}
 
         {/* pb-28 on small screens: the tab bar is fixed, so the last thing on
             the page would otherwise sit underneath it. */}
         <main className="min-w-0 flex-1 px-5 pb-28 pt-8 lg:px-8 lg:pb-8" key={location.pathname}>
+          {user?.emailVerified === false && <VerifyEmailBanner email={user.email} />}
+
           <Routes>
             <Route index element={<Overview card={card} publicUrl={publicUrl} qrUrl={qrUrl} analytics={analytics} pro={pro} />} />
             <Route path="edit" element={<EditCard card={card} setCard={setCard} pro={pro} />} />

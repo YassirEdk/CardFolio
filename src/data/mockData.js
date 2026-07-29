@@ -59,12 +59,21 @@ export const DEMO_CARDS = {
     website: 'https://doestudio.com',
     template: 'executive',
     accent: '#2E6BE6',
+    /**
+     * Profile URLs, not platform front pages.
+     *
+     * John Doe is fictional, so there is no account to link to: a handle URL
+     * either 404s or, worse, lands on whichever real person happens to own
+     * that name. The links therefore point at each platform, and `handle`
+     * says whose card this is — which is what the row was trying to show all
+     * along, rather than "@feed" read off the end of a URL.
+     */
     links: [
-      { id: 'l1', platform: 'linkedin', url: 'https://www.linkedin.com/feed/', label: 'LinkedIn' },
-      { id: 'l2', platform: 'dribbble', url: 'https://dribbble.com/shots', label: 'Dribbble' },
-      { id: 'l3', platform: 'behance', url: 'https://www.behance.net/galleries', label: 'Behance' },
-      { id: 'l4', platform: 'instagram', url: 'https://www.instagram.com/explore/', label: 'Instagram' },
-      { id: 'l5', platform: 'upwork', url: 'https://www.upwork.com/freelance-jobs/', label: 'Upwork' },
+      { id: 'l1', platform: 'linkedin', url: 'https://www.linkedin.com/feed/', handle: 'johndoe' },
+      { id: 'l2', platform: 'dribbble', url: 'https://dribbble.com/shots', handle: 'johndoe' },
+      { id: 'l3', platform: 'behance', url: 'https://www.behance.net/galleries', handle: 'johndoe' },
+      { id: 'l4', platform: 'instagram', url: 'https://www.instagram.com/explore/', handle: 'johndoe' },
+      { id: 'l5', platform: 'upwork', url: 'https://www.upwork.com/freelance-jobs/', handle: 'johndoe' },
     ],
     stats: { views: 2841, clicks: 962, scans: 418 },
   },

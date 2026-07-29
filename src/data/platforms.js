@@ -13,6 +13,7 @@ import {
   Link as LinkIcon,
   Twitter,
 } from 'lucide-react'
+import { textOn } from '../lib/color'
 
 /**
  * Central registry of every platform a card can link to.
@@ -24,17 +25,22 @@ import {
  * for a handle and shows the base as a prefix, so nobody has to type or
  * remember "https://" — the stored value is still the full URL.
  * Website and custom links have no base: those are whole addresses.
+ *
+ * `mono` marks a brand whose mark has no colour of its own — X, GitHub and
+ * TikTok are black on white and white on black, by their own guidelines. Their
+ * `color` is the light-background version; on a dark card it has to flip, or
+ * the logo is black ink on a near-black surface. See `brandOn`.
  */
 export const PLATFORMS = {
   instagram: { name: 'Instagram', icon: Instagram, color: '#E1306C', base: 'https://instagram.com/', placeholder: 'username' },
   facebook: { name: 'Facebook', icon: Facebook, color: '#1877F2', base: 'https://facebook.com/', placeholder: 'username' },
   linkedin: { name: 'LinkedIn', icon: Linkedin, color: '#0A66C2', base: 'https://linkedin.com/in/', placeholder: 'username' },
-  x: { name: 'X', icon: Twitter, color: '#0F1419', base: 'https://x.com/', placeholder: 'username' },
-  tiktok: { name: 'TikTok', icon: Music2, color: '#111111', base: 'https://tiktok.com/@', placeholder: 'username' },
+  x: { name: 'X', icon: Twitter, color: '#0F1419', mono: true, base: 'https://x.com/', placeholder: 'username' },
+  tiktok: { name: 'TikTok', icon: Music2, color: '#111111', mono: true, base: 'https://tiktok.com/@', placeholder: 'username' },
   youtube: { name: 'YouTube', icon: Youtube, color: '#FF0000', base: 'https://youtube.com/@', placeholder: 'channel' },
   behance: { name: 'Behance', icon: Palette, color: '#1769FF', base: 'https://behance.net/', placeholder: 'username' },
   dribbble: { name: 'Dribbble', icon: Dribbble, color: '#EA4C89', base: 'https://dribbble.com/', placeholder: 'username' },
-  github: { name: 'GitHub', icon: Github, color: '#181717', base: 'https://github.com/', placeholder: 'username' },
+  github: { name: 'GitHub', icon: Github, color: '#181717', mono: true, base: 'https://github.com/', placeholder: 'username' },
   fiverr: { name: 'Fiverr', icon: Briefcase, color: '#1DBF73', base: 'https://fiverr.com/', placeholder: 'username' },
   upwork: { name: 'Upwork', icon: Briefcase, color: '#14A800', base: 'https://upwork.com/freelancers/~', placeholder: 'id' },
   malt: { name: 'Malt', icon: Briefcase, color: '#FC5757', base: 'https://malt.fr/profile/', placeholder: 'username' },
@@ -108,3 +114,15 @@ export const ACCENT_COLORS = [
   { name: 'Teal', value: '#0F766E' },
   { name: 'Graphite', value: '#334155' },
 ]
+
+/**
+ * A platform's mark, in the version that can be seen on `surface`.
+ *
+ * Only the monochrome brands move: Instagram's pink and Facebook's blue are
+ * the brand, and repainting those would be wrong on any background. A mark
+ * that is defined as "black or white, whichever shows" is a different case —
+ * flipping it is what its own brand guidelines ask for.
+ */
+export function brandOn(platform, surface = '#ffffff') {
+  return platform.mono ? textOn(surface) : platform.color
+}

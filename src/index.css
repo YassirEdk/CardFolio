@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/**
+ * Dark mode is a class on <html>, not a media query.
+ *
+ * The OS preference is only one of the three settings the app offers — light
+ * is the default and a person can pick either regardless of what their system
+ * says — so the switch has to be something the app controls. lib/theme.jsx
+ * puts the class there; `@custom-variant` is what teaches Tailwind's `dark:`
+ * prefix to look for it.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
@@ -55,6 +66,12 @@
     color: var(--color-slate-800);
     background-color: #ffffff;
   }
+  /* The page under everything. Set here as well as on each shell so an
+     overscroll bounce, or a short page, never shows white behind a dark one. */
+  html.dark body {
+    color: var(--color-slate-300);
+    background-color: var(--color-navy-950);
+  }
   /* Tailwind v4's preflight sets buttons to `cursor: default`, unlike v3.
      Everything clickable in this app should read as clickable, so the hand
      comes back — except where the control is disabled. */
@@ -71,6 +88,9 @@
   }
   ::selection {
     background: var(--color-accent-100);
+  }
+  .dark ::selection {
+    background: var(--color-accent-800);
   }
 }
 
@@ -235,4 +255,85 @@
   .backdrop-blob-b { animation: drift-b 32s ease-in-out infinite alternate; }
   .backdrop-blob-c { animation: drift-c 22s ease-in-out infinite alternate; }
   .animate-page-in { animation: page-in 0.34s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+}
+
+/* ------------------------------------------------------------------ dark */
+/**
+ * The dark theme is a palette swap, not a second set of classes.
+ *
+ * Every dark surface in the app is written as `dark:bg-navy-900`,
+ * `dark:border-navy-800` and so on — so what "navy" resolves to *inside* the
+ * dark theme is the whole design. Redefining the scale here re-skins every
+ * screen at once, and keeps the light theme's navy exactly as drawn.
+ *
+ * These are neutral greys: no blue in them at all. A navy-on-navy dark mode
+ * reads as "the light design with the lights off"; charcoal reads as a design
+ * of its own, and lets the one saturated thing on screen — the accent — be
+ * the only colour that carries meaning.
+ *
+ * The slate scale moves too, for the same reason: slate is a blue-tinted grey,
+ * and body text in it would put the cast straight back.
+ */
+.dark {
+  --color-navy-50: #f1f2f4;
+  --color-navy-100: #dde0e5;
+  --color-navy-200: #c2c7ce;
+  --color-navy-300: #9aa1ac;
+  --color-navy-400: #79808b;
+  --color-navy-500: #5a606a;
+  --color-navy-600: #454a52;
+  --color-navy-700: #34383e;
+  --color-navy-800: #26292e;
+  --color-navy-900: #17191c;
+  --color-navy-950: #0f1113;
+
+  --color-slate-50: #f6f7f8;
+  --color-slate-100: #ececee;
+  --color-slate-200: #e0e2e5;
+  --color-slate-300: #d0d3d8;
+  --color-slate-400: #9ba0a8;
+  --color-slate-500: #7b818a;
+  --color-slate-600: #626871;
+  --color-slate-700: #4b5058;
+  --color-slate-800: #383c42;
+
+  /* Shadows have nothing to fall on in a dark room: what reads as depth there
+     is the border, so the card shadow all but disappears. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.22);
+  --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+/* A loading skeleton is a shape made of the surface it sits on, so it has to
+   move with the theme or it flashes as a white block on a dark page. */
+.dark .skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-navy-800) 25%,
+    var(--color-navy-700) 37%,
+    var(--color-navy-800) 63%
+  );
+  background-size: 400% 100%;
+}
+
+/* ------------------------------------------------------------------- rtl */
+/* Arabic sets dir="rtl" on <html>, which flips the whole layout for free —
+   flex and grid, padding-inline, text alignment. These are the few things that
+   do not follow, because they are drawn rather than laid out. */
+[dir='rtl'] .rtl-flip {
+  transform: scaleX(-1);
+}
+
+/**
+ * A card written right to left still holds left-to-right facts.
+ *
+ * "+1 415 555 0134", an email address and a domain are left-to-right runs, and
+ * inside a right-to-left block the browser is correct to move the "+" to the
+ * far end — which is how the demo card ended up advertising "0134 555 415 1+".
+ * `plaintext` tells each run to take its direction from its own first strong
+ * character instead of inheriting the paragraph's: Arabic sentences stay
+ * right to left, phone numbers and addresses come out forwards.
+ */
+.bidi-plaintext,
+.bidi-plaintext * {
+  unicode-bidi: plaintext;
 }

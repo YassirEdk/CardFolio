@@ -187,11 +187,11 @@ export default function ImageCropper({
       aria-label={title || 'Crop image'}
       onMouseDown={(event) => event.target === event.currentTarget && onCancel?.()}
     >
-      <div className="w-full max-w-2xl overflow-hidden rounded-md border border-slate-200 bg-white shadow-[var(--shadow-lift)]">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+      <div className="w-full max-w-2xl overflow-hidden rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 shadow-[var(--shadow-lift)]">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-navy-800 px-5 py-4">
           <div>
-            <h2 className="text-sm font-bold text-navy-900">{title || 'Crop image'}</h2>
-            <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-slate-500">
+            <h2 className="text-sm font-bold text-navy-900 dark:text-white">{title || 'Crop image'}</h2>
+            <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
               <Move size={12} aria-hidden="true" />
               Drag to reposition, scroll to zoom
             </p>
@@ -250,7 +250,7 @@ export default function ImageCropper({
                 style={{ width: `${(safeRatio / aspect) * 100}%` }}
                 aria-hidden="true"
               >
-                <span className="absolute -top-px left-1/2 -translate-x-1/2 rounded-b-md bg-amber-300/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-navy-900">
+                <span className="absolute -top-px left-1/2 -translate-x-1/2 rounded-b-md bg-amber-300/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-navy-900 dark:text-white">
                   Visible on phone
                 </span>
               </div>
@@ -267,7 +267,7 @@ export default function ImageCropper({
               value={zoom}
               onChange={(event) => setZoom(Number(event.target.value))}
               aria-label="Zoom"
-              className="h-1.5 w-full cursor-pointer appearance-none rounded-md bg-slate-200 accent-accent-500"
+              className="h-1.5 w-full cursor-pointer appearance-none rounded-md bg-slate-200 dark:bg-navy-800 accent-accent-500"
             />
             <button
               type="button"
@@ -275,7 +275,7 @@ export default function ImageCropper({
                 setZoom(1)
                 setOffset({ x: 0, y: 0 })
               }}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-navy-900"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-100 hover:text-navy-900"
             >
               <RotateCcw size={13} aria-hidden="true" />
               Reset
@@ -283,7 +283,7 @@ export default function ImageCropper({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-200 bg-slate-50 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 px-5 py-4">
           {failure && (
             <p role="alert" className="mr-auto text-xs font-medium text-red-600">
               {failure}

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Mail, Phone, MessageCircle, Globe, User, ScanLine, Copy, Check, Download } from 'lucide-react'
-import { getPlatform } from '../data/platforms'
+import { brandOn, getPlatform } from '../data/platforms'
 import { photoSrc } from '../lib/image'
-import { telHref, sameNumber } from '../lib/phone'
+import { telHref, sameNumber, formatPhone } from '../lib/phone'
 import { readableOn, textOn } from '../lib/color'
 import { cx, ScanCorners } from '../components/ui'
 import QrCode from '../components/QrCode'
 import { useToast } from '../components/Toast'
+import { useT } from '../lib/i18n'
 
 /**
  * Building blocks owned by the desktop layout.
@@ -17,19 +18,25 @@ import { useToast } from '../components/Toast'
  */
 
 /** Contact methods, desktop wording (full labels rather than button verbs). */
-export function desktopContacts(card) {
+/**
+ * `t` is passed in rather than pulled from a hook: this is a plain function,
+ * called from five templates that each already have one. Defaulting it keeps
+ * every existing caller working, in English.
+ */
+export function desktopContacts(card, t = (key) => key) {
   const items = []
   // One line used for both is one row, not the same number printed twice.
   const oneNumber = sameNumber(card.phone, card.whatsapp)
 
   if (card.email)
-    items.push({ key: 'email', icon: Mail, label: 'Email', value: card.email, href: `mailto:${card.email}` })
+    items.push({ key: 'email', icon: Mail, label: t('card.emailLabel'), value: card.email, href: `mailto:${card.email}` })
   if (card.phone)
     items.push({
       key: 'phone',
       icon: Phone,
-      label: oneNumber ? 'Phone & WhatsApp' : 'Phone',
-      value: card.phone,
+      label: oneNumber ? t('card.callWhatsapp') : t('card.call'),
+      // Grouped the way its own country writes it; the href stays digits.
+      value: formatPhone(card.phone),
       // Digits and a leading + only: the display value carries a dash.
       href: telHref(card.phone),
     })
@@ -37,8 +44,8 @@ export function desktopContacts(card) {
     items.push({
       key: 'whatsapp',
       icon: MessageCircle,
-      label: 'WhatsApp',
-      value: card.whatsapp,
+      label: t('card.whatsapp'),
+      value: formatPhone(card.whatsapp),
       href: `https://wa.me/${String(card.whatsapp).replace(/[^0-9]/g, '')}`,
       external: true,
     })
@@ -46,7 +53,7 @@ export function desktopContacts(card) {
     items.push({
       key: 'website',
       icon: Globe,
-      label: 'Website',
+      label: t('card.website'),
       value: String(card.website).replace(/^https?:\/\//, ''),
       href: card.website,
       external: true,
@@ -54,7 +61,8 @@ export function desktopContacts(card) {
   return items
 }
 
-export function desktopSocials(card) {
+/** `surface` flips the monochrome marks — see `brandOn`. */
+export function desktopSocials(card, surface = '#ffffff') {
   return (card.links || [])
     .filter((link) => link.url)
     .map((link) => {
@@ -63,8 +71,10 @@ export function desktopSocials(card) {
         ...link,
         name: link.label || platform.name,
         icon: platform.icon,
-        brand: platform.color,
-        handle: handleFromUrl(link.url),
+        brand: brandOn(platform, surface),
+        // A stored handle wins: the URL is where the link goes, which is not
+        // always where the person's name is written.
+        handle: link.handle ? `@${String(link.handle).replace(/^@/, '')}` : handleFromUrl(link.url),
       }
     })
 }
@@ -213,6 +223,7 @@ export function useCopyLink(publicUrl) {
  * templates; the QR itself always keeps a light quiet zone so it stays scannable.
  */
 export function QrPanel({ card, publicUrl, accent, tone = 'light', className }) {
+  const t = useT()
   const { copied, copyLink } = useCopyLink(publicUrl)
   const dark = tone === 'dark'
 
@@ -226,10 +237,10 @@ export function QrPanel({ card, publicUrl, accent, tone = 'light', className }) 
     >
       <p className={cx('inline-flex items-center gap-2 text-sm font-bold', dark ? 'text-white' : 'text-navy-900')}>
         <ScanLine size={15} aria-hidden="true" />
-        Open on your phone
+        {t('card.openOnPhone')}
       </p>
       <p className={cx('mt-1.5 text-xs leading-relaxed', dark ? 'text-slate-400' : 'text-slate-500')}>
-        Scan this code to carry the card with you.
+        {t('card.scanToCarry')}
       </p>
       {/* Scanner brackets instead of the printed URL: the address was long
           enough on some domains to wrap badly, and it said nothing the code
@@ -256,7 +267,7 @@ export function QrPanel({ card, publicUrl, accent, tone = 'light', className }) 
         )}
       >
         {copied ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
-        {copied ? 'Copied' : 'Copy link'}
+        {copied ? t('card.copied') : t('card.copyLink')}
       </button>
     </div>
   )
@@ -264,6 +275,7 @@ export function QrPanel({ card, publicUrl, accent, tone = 'light', className }) 
 
 /** "Add to your contacts" panel — the .vcf download, explained. */
 export function SaveContactPanel({ onSaveContact, accent, tone = 'light', className }) {
+  const t = useT()
   const dark = tone === 'dark'
 
   return (
@@ -274,9 +286,9 @@ export function SaveContactPanel({ onSaveContact, accent, tone = 'light', classN
         className
       )}
     >
-      <p className={cx('text-sm font-bold', dark ? 'text-white' : 'text-navy-900')}>Add to your contacts</p>
+      <p className={cx('text-sm font-bold', dark ? 'text-white' : 'text-navy-900')}>{t('card.addToContacts')}</p>
       <p className={cx('mt-1.5 text-xs leading-relaxed', dark ? 'text-slate-400' : 'text-slate-500')}>
-        Downloads a .vcf file that opens straight in your address book.
+        {t('card.vcfHint')}
       </p>
       <button
         type="button"
@@ -289,13 +301,14 @@ export function SaveContactPanel({ onSaveContact, accent, tone = 'light', classN
         )}
       >
         <Download size={16} aria-hidden="true" />
-        Save contact
+        {t('card.saveContact')}
       </button>
     </div>
   )
 }
 
 export function DesktopFooter({ card, tone = 'light', className }) {
+  const t = useT()
   // Pro can take the credit off the card entirely.
   if (card?.hideBranding) return null
 
@@ -308,7 +321,7 @@ export function DesktopFooter({ card, tone = 'light', className }) {
           tone === 'dark' ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-navy-900'
         )}
       >
-        Powered by <span className="font-bold">CardFolio</span>
+        {t('card.poweredBy')} <span className="font-bold">CardFolio</span>
       </a>
     </p>
   )

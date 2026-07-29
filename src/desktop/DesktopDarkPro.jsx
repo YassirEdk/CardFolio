@@ -12,6 +12,7 @@ import {
 } from './parts'
 import { useCardActions } from '../lib/useCardActions'
 import { readableOn, textOn } from '../lib/color'
+import { useT } from '../lib/i18n'
 
 /** The page surface, and the plate the hero text sits over once scrimmed. */
 const SURFACE = '#0B1424'
@@ -30,8 +31,10 @@ function DarkLabel({ children }) {
  */
 export default function DesktopDarkPro({ card }) {
   const accent = card.accent || '#2E6BE6'
-  const contacts = desktopContacts(card)
-  const socials = desktopSocials(card)
+  const t = useT()
+  const contacts = desktopContacts(card, t)
+  // Near-black card: the monochrome marks flip to white here.
+  const socials = desktopSocials(card, SURFACE)
   const { publicUrl, onSaveContact, onShare } = useCardActions(card)
 
   /**
@@ -108,7 +111,7 @@ export default function DesktopDarkPro({ card }) {
                     className="inline-flex h-12 items-center justify-center gap-2 rounded-md px-6 text-sm font-semibold ring-1 ring-inset ring-white/15 transition-opacity hover:opacity-90"
                   >
                     <Download size={16} aria-hidden="true" />
-                    Save contact
+                    {t('card.saveContact')}
                   </button>
                   <button
                     type="button"
@@ -116,7 +119,7 @@ export default function DesktopDarkPro({ card }) {
                     className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-white/20 px-6 text-sm font-semibold text-white transition-colors hover:bg-white/10"
                   >
                     <Share2 size={16} aria-hidden="true" />
-                    Share
+                    {t('card.share')}
                   </button>
                 </div>
               </div>
@@ -131,14 +134,14 @@ export default function DesktopDarkPro({ card }) {
           <div className="space-y-10">
             {card.bio && (
               <section aria-label="About">
-                <DarkLabel>About</DarkLabel>
+                <DarkLabel>{t('card.about')}</DarkLabel>
                 <p className="mt-4 max-w-prose text-lg leading-relaxed text-slate-300">{card.bio}</p>
               </section>
             )}
 
             {contacts.length > 0 && (
               <section aria-label="Contact details">
-                <DarkLabel>Contact</DarkLabel>
+                <DarkLabel>{t('card.contact')}</DarkLabel>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {contacts.map((item) => (
                     <a
@@ -174,7 +177,7 @@ export default function DesktopDarkPro({ card }) {
 
             {socials.length > 0 && (
               <section aria-label="Profiles and portfolio">
-                <DarkLabel>Elsewhere</DarkLabel>
+                <DarkLabel>{t('card.elsewhere')}</DarkLabel>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {socials.map((link) => (
                     <a

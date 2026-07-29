@@ -44,6 +44,8 @@ export default function PhoneFrame({
    * actually turned — it costs a stack of composited layers.
    */
   solid = false,
+  /** The writing direction of the card inside, not of the app around it. */
+  dir = 'ltr',
   /**
    * Pointer position as {x, y} in -1..1, used to slide a specular highlight
    * across the glass. Real glass catches the light from wherever you are
@@ -355,7 +357,7 @@ export default function PhoneFrame({
                 : undefined
             }
           >
-            <ScaledCard width={screen.width} minHeight={minCardHeight}>
+            <ScaledCard width={screen.width} minHeight={minCardHeight} dir={dir}>
               {children}
             </ScaledCard>
           </div>

@@ -11,6 +11,7 @@ import {
 } from './parts'
 import { useCardActions } from '../lib/useCardActions'
 import { textOn } from '../lib/color'
+import { useT } from '../lib/i18n'
 
 /**
  * Minimal on desktop — an editorial single column on white.
@@ -21,7 +22,8 @@ import { textOn } from '../lib/color'
  */
 export default function DesktopMinimal({ card }) {
   const accent = card.accent || '#2E6BE6'
-  const contacts = desktopContacts(card)
+  const t = useT()
+  const contacts = desktopContacts(card, t)
   const socials = desktopSocials(card)
   const { publicUrl, onSaveContact, onShare } = useCardActions(card)
 
@@ -64,14 +66,14 @@ export default function DesktopMinimal({ card }) {
                   style={{ backgroundColor: accent, color: textOn(accent) }}
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-md px-7 text-sm font-semibold transition-opacity hover:opacity-90"
                 >
-                  Save contact
+                  {t('card.saveContact')}
                 </button>
                 <button
                   type="button"
                   onClick={onShare}
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-slate-300 px-7 text-sm font-semibold text-navy-900 transition-colors hover:bg-slate-50"
                 >
-                  Share
+                  {t('card.share')}
                 </button>
               </div>
             </div>
@@ -82,7 +84,7 @@ export default function DesktopMinimal({ card }) {
             <div className="space-y-12">
               {contacts.length > 0 && (
                 <section aria-label="Contact details">
-                  <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Contact</h2>
+                  <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('card.contact')}</h2>
                   <ul className="mt-5 divide-y divide-slate-100 border-y border-slate-100">
                     {contacts.map((item) => (
                       <li key={item.key}>
@@ -111,7 +113,7 @@ export default function DesktopMinimal({ card }) {
 
               {socials.length > 0 && (
                 <section aria-label="Social profiles">
-                  <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Find me on</h2>
+                  <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('card.findMeOn')}</h2>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
                     {socials.map((link) => (
                       <a

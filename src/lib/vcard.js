@@ -1,5 +1,11 @@
 /** Builds and downloads a vCard 3.0 file for a card. */
 
+/** "+212 600-112233" → "+212600112233". */
+function dialable(value = '') {
+  const digits = String(value).replace(/\D/g, '')
+  return /^[^\d]*\+/.test(String(value)) ? `+${digits}` : digits
+}
+
 function escapeValue(value = '') {
   return String(value).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;')
 }
@@ -17,7 +23,9 @@ export function buildVCard(card, publicUrl) {
 
   if (card.title) lines.push(`TITLE:${escapeValue(card.title)}`)
   if (card.company) lines.push(`ORG:${escapeValue(card.company)}`)
-  if (card.phone) lines.push(`TEL;TYPE=CELL:${escapeValue(card.phone)}`)
+  // E.164, not the card's spacing: this is parsed by a contacts app, and the
+  // grouping that helps a person read a number only gets in its way.
+  if (card.phone) lines.push(`TEL;TYPE=CELL:${escapeValue(dialable(card.phone))}`)
   if (card.email) lines.push(`EMAIL;TYPE=INTERNET:${escapeValue(card.email)}`)
   if (card.website) lines.push(`URL:${escapeValue(card.website)}`)
   if (card.location) lines.push(`ADR;TYPE=WORK:;;;${escapeValue(card.location)};;;`)

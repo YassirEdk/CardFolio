@@ -67,6 +67,7 @@ export function toCard(row, links = []) {
       platform: link.platform,
       url: link.url,
       label: link.label || undefined,
+      handle: link.handle || undefined,
     })),
   }
 }

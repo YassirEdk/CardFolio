@@ -14,6 +14,7 @@ import {
 import { useCardActions } from '../lib/useCardActions'
 import { photoSrc } from '../lib/image'
 import { textOn } from '../lib/color'
+import { useT } from '../lib/i18n'
 
 /**
  * Photo-focus on desktop — the portrait takes a full sticky column on the left
@@ -25,7 +26,8 @@ import { textOn } from '../lib/color'
  */
 export default function DesktopPhotoFocus({ card }) {
   const accent = card.accent || '#2E6BE6'
-  const contacts = desktopContacts(card)
+  const t = useT()
+  const contacts = desktopContacts(card, t)
   const socials = desktopSocials(card)
   const { publicUrl, onSaveContact, onShare } = useCardActions(card)
 
@@ -99,7 +101,7 @@ export default function DesktopPhotoFocus({ card }) {
               className="inline-flex h-12 items-center justify-center gap-2 rounded-md px-6 text-sm font-semibold transition-opacity hover:opacity-90"
             >
               <Download size={16} aria-hidden="true" />
-              Save contact
+              {t('card.saveContact')}
             </button>
             <button
               type="button"
@@ -107,20 +109,20 @@ export default function DesktopPhotoFocus({ card }) {
               className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-slate-300 px-6 text-sm font-semibold text-navy-900 transition-colors hover:bg-slate-50"
             >
               <Share2 size={16} aria-hidden="true" />
-              Share
+              {t('card.share')}
             </button>
           </div>
 
           {card.bio && (
             <section aria-label="About">
-              <SectionLabel>About</SectionLabel>
+              <SectionLabel>{t('card.about')}</SectionLabel>
               <p className="mt-4 text-lg leading-relaxed text-slate-600">{card.bio}</p>
             </section>
           )}
 
           {contacts.length > 0 && (
             <section aria-label="Contact details">
-              <SectionLabel>Contact</SectionLabel>
+              <SectionLabel>{t('card.contact')}</SectionLabel>
               <div className="mt-4 space-y-3">
                 {contacts.map((item) => (
                   <a
@@ -154,7 +156,7 @@ export default function DesktopPhotoFocus({ card }) {
 
           {socials.length > 0 && (
             <section aria-label="Profiles and portfolio">
-              <SectionLabel>Portfolio &amp; social</SectionLabel>
+              <SectionLabel>{t('card.portfolioSocial')}</SectionLabel>
               <div className="mt-4 flex flex-wrap gap-2.5">
                 {socials.map((link) => (
                   <a

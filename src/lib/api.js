@@ -42,11 +42,19 @@ export function setToken(token) {
 
 /** Thrown for any non-2xx response; `errors` carries per-field messages. */
 export class ApiError extends Error {
-  constructor(message, { status, errors } = {}) {
+  constructor(message, { status, errors, reason, payload } = {}) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.errors = errors || null
+    /** The response body, for the odd field a caller needs (an email, an id). */
+    this.payload = payload || null
+    /**
+     * A machine-readable cause, where the server sends one. The message is
+     * written in English on the server and cannot be translated after the
+     * fact; a code can be, so the interface says it in the visitor's language.
+     */
+    this.reason = reason || null
   }
 }
 
@@ -95,6 +103,8 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
     throw new ApiError(payload.error || fallback, {
       status: response.status,
       errors: payload.errors,
+      reason: payload.reason,
+      payload,
     })
   }
   return payload
@@ -108,6 +118,10 @@ export const api = {
   /** `mode: 'login'` refuses to create an account for an unknown address. */
   google: (credential, mode) => request('/auth/google', { method: 'POST', body: { credential, mode } }),
   me: () => request('/auth/me', { auth: true }),
+
+  /** Unauthenticated on purpose: the link is opened wherever the inbox is. */
+  verifyEmail: (token) => request('/auth/verify', { method: 'POST', body: { token } }),
+  resendVerification: () => request('/auth/verify/resend', { method: 'POST', auth: true }),
 
   checkUsername: (username) =>
     request(`/usernames/${encodeURIComponent(username)}/available`).then((r) => r.available),

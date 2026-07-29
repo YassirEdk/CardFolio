@@ -1,5 +1,6 @@
 import { ArrowUpRight, MapPin } from 'lucide-react'
 import { Avatar, ActionRow, PoweredBy, LogoMark, contactItems, socialItems, linkProps } from './shared'
+import { useT } from '../lib/i18n'
 import { readableOn } from '../lib/color'
 
 /** The near-black surface this template paints on. */
@@ -14,8 +15,10 @@ const SURFACE = '#050B16'
  */
 export default function DarkPro({ card, onSaveContact, onShare }) {
   const accent = card.accent || '#2E6BE6'
-  const contacts = contactItems(card)
-  const socials = socialItems(card)
+  const t = useT()
+  const contacts = contactItems(card, t)
+  // Near-black card: the monochrome marks flip to white here.
+  const socials = socialItems(card, SURFACE)
 
   /**
    * Accent as ink, raised until it reads on near-black. A dark accent — Deep
@@ -127,7 +130,7 @@ export default function DarkPro({ card, onSaveContact, onShare }) {
 
       {socials.length > 0 && (
         <section className="mt-7" aria-label="Social profiles">
-          <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Elsewhere</h2>
+          <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('card.elsewhere')}</h2>
           <div className="space-y-2">
             {socials.map((link) => (
               <a

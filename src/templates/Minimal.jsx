@@ -1,5 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import { Avatar, ActionRow, PoweredBy, LogoMark, contactItems, socialItems, LocationLine, linkProps } from './shared'
+import { useT } from '../lib/i18n'
 
 /**
  * Minimal — white, airy, generous type. The safe default.
@@ -9,7 +10,8 @@ import { Avatar, ActionRow, PoweredBy, LogoMark, contactItems, socialItems, Loca
  */
 export default function Minimal({ card, onSaveContact, onShare }) {
   const accent = card.accent || '#2E6BE6'
-  const contacts = contactItems(card)
+  const t = useT()
+  const contacts = contactItems(card, t)
   const socials = socialItems(card)
 
   return (
@@ -66,7 +68,7 @@ export default function Minimal({ card, onSaveContact, onShare }) {
 
       {socials.length > 0 && (
         <section className="mt-8" aria-label="Social profiles">
-          <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Find me on</h2>
+          <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t('card.findMeOn')}</h2>
           <div className="space-y-2.5">
             {socials.map((link) => (
               <a

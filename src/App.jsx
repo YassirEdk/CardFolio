@@ -7,6 +7,7 @@ import Onboarding from './pages/Onboarding'
 import Dashboard from './pages/Dashboard'
 import PublicCard from './pages/PublicCard'
 import NotFound from './pages/NotFound'
+import VerifyEmail from './pages/VerifyEmail'
 
 /**
  * Reserved first-path segments. The public card route is `/:username`, so any
@@ -17,6 +18,7 @@ const RESERVED = new Set([
   'signup',
   'onboarding',
   'dashboard',
+  'verify',
   '404',
   'about',
   'pricing',
@@ -62,6 +64,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/verify" element={<VerifyEmail />} />
         <Route path="/dashboard/*" element={<Dashboard />} />
         <Route path="/404" element={<NotFound />} />
         {/* Public card — matched last so every app route wins first. */}

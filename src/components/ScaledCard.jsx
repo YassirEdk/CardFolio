@@ -24,6 +24,12 @@ export default function ScaledCard({
   width,
   minHeight,
   className,
+  /**
+   * The card's own writing direction, which is not the interface's — see the
+   * note on the wrapper below. Left to right unless the card's content is
+   * itself right-to-left, which only the caller knows.
+   */
+  dir = 'ltr',
   as: Tag = 'div',
   /** The width the content is laid out for. The desktop card uses its own. */
   designWidth = DESIGN_WIDTH,
@@ -73,7 +79,24 @@ export default function ScaledCard({
   return (
     <Tag
       ref={hostRef}
-      className={cx('block w-full', className)}
+      /**
+       * Cards are laid out left to right whatever language the app is in.
+       *
+       * `dir` on <html> is about the interface, and it cascades into
+       * everything — including this, which is not interface but somebody's
+       * card. Mirrored into an Arabic session an English card came out with
+       * its layout reversed and its phone number reordered: "+1 415 555 0134"
+       * is a left-to-right run, and inside a right-to-left block the browser
+       * is correct to move the "+" to the far end. Declaring the direction
+       * here stops it, on every surface that renders a card.
+       *
+       * The chrome inside is still translated — Contact, Save contact,
+       * Powered by. Those are the app speaking, and Arabic reads correctly as
+       * a right-to-left run within a left-to-right block.
+       */
+      dir={dir}
+      // Only where it is needed: a left-to-right card has nothing to resolve.
+      className={cx('block w-full', dir === 'rtl' && 'bidi-plaintext', className)}
       style={{ height: cardHeight ? cardHeight * ratio : undefined }}
     >
       <Tag
@@ -90,7 +113,17 @@ export default function ScaledCard({
           width: designWidth,
           minHeight,
           transform: `scale(${ratio})`,
-          transformOrigin: 'top left',
+          /**
+           * The corner the card shrinks toward has to be the corner it starts
+           * from.
+           *
+           * This box is laid out at the full design width and scaled down to
+           * fit. In a right-to-left card the block starts at the *right* edge
+           * of its container and runs left — so shrinking it toward its top
+           * left drags the whole card away from the frame, which is why the
+           * Arabic card sat half outside its phone with a gap down one side.
+           */
+          transformOrigin: dir === 'rtl' ? 'top right' : 'top left',
         }}
       >
         {children}

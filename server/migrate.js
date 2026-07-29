@@ -34,14 +34,21 @@ const DEMO = [
     website: 'https://doestudio.com',
     template: 'executive',
     accent: '#2E6BE6',
-    // Demo links point at pages each platform really serves: John Doe is
-    // fictional, so a handle URL 404s and the site bounces you to its home.
+    /**
+     * John Doe is fictional, so these link to each platform rather than to a
+     * profile: a made-up handle either 404s or lands on whichever real person
+     * owns that name, and pointing the demo at a stranger's account is worse
+     * than pointing it at a home page.
+     *
+     * `handle` is what the row shows. Without it the label is read off the end
+     * of the URL, which on a non-profile link is a page name — "@feed".
+     */
     links: [
-      { platform: 'linkedin', url: 'https://www.linkedin.com/feed/', label: 'LinkedIn' },
-      { platform: 'dribbble', url: 'https://dribbble.com/shots', label: 'Dribbble' },
-      { platform: 'behance', url: 'https://www.behance.net/galleries', label: 'Behance' },
-      { platform: 'instagram', url: 'https://www.instagram.com/explore/', label: 'Instagram' },
-      { platform: 'upwork', url: 'https://www.upwork.com/freelance-jobs/', label: 'Upwork' },
+      { platform: 'linkedin', url: 'https://www.linkedin.com/feed/', handle: 'johndoe' },
+      { platform: 'dribbble', url: 'https://dribbble.com/shots', handle: 'johndoe' },
+      { platform: 'behance', url: 'https://www.behance.net/galleries', handle: 'johndoe' },
+      { platform: 'instagram', url: 'https://www.instagram.com/explore/', handle: 'johndoe' },
+      { platform: 'upwork', url: 'https://www.upwork.com/freelance-jobs/', handle: 'johndoe' },
     ],
     events: { view: 2841, click: 962, scan: 418 },
   },
@@ -145,8 +152,9 @@ async function seed() {
       await client.query('DELETE FROM card_links WHERE card_id = $1', [cardId])
       for (const [index, link] of person.links.entries()) {
         await client.query(
-          'INSERT INTO card_links (card_id, platform, url, label, position) VALUES ($1,$2,$3,$4,$5)',
-          [cardId, link.platform, link.url, link.label || null, index]
+          `INSERT INTO card_links (card_id, platform, url, label, handle, position)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [cardId, link.platform, link.url, link.label || null, link.handle || null, index]
         )
       }
 

@@ -19,7 +19,8 @@ import { TEMPLATES, getTemplate, templateHasBanner, templateIsPro } from '../tem
 import CardView from './CardView'
 import ScaledCard from './ScaledCard'
 import { downscaleDataUrl } from '../lib/image'
-import { splitPhone, joinPhone, formatNational } from '../lib/phone'
+import { splitPhone, joinPhone, formatNationalFor } from '../lib/phone'
+import { useT } from '../lib/i18n'
 import DialCodeSelect from './DialCodeSelect'
 import ImageCropper from './ImageCropper'
 import UpgradeDialog from './UpgradeDialog'
@@ -80,14 +81,14 @@ function ImageUpload({
 
   return (
     <div className="space-y-1.5">
-      <span className="block text-sm font-semibold text-navy-900">{label}</span>
+      <span className="block text-sm font-semibold text-navy-900 dark:text-white">{label}</span>
       <div className={cx('gap-4', wide ? 'space-y-3' : 'flex items-center')}>
         {/* When the image is cropped to a ratio, the preview uses that same
             ratio — otherwise the box would re-crop it and show you something
             different from what you framed. */}
         <div
           className={cx(
-            'grid shrink-0 place-items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50',
+            'grid shrink-0 place-items-center overflow-hidden rounded-md border border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950',
             wide ? 'w-full' : 'h-20 w-20',
             wide && !(cropAspect && value) && 'h-24',
             round && 'rounded-md'
@@ -125,7 +126,7 @@ function ImageUpload({
               </Button>
             )}
           </div>
-          {hint && <p className="mt-2 text-xs text-slate-500">{hint}</p>}
+          {hint && <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
         </div>
 
         <input
@@ -165,46 +166,47 @@ function ImageUpload({
 /* --------------------------------------------------------- step: identity */
 
 export function IdentitySection({ card, update, errors = {} }) {
+  const t = useT()
   const bioLength = (card.bio || '').length
 
   return (
     <div className="space-y-6">
       <div className="grid gap-6 sm:grid-cols-2">
-        <Field label="Full name" htmlFor="fullName" error={errors.fullName} required>
+        <Field label={t('editor.fullName')} htmlFor="fullName" error={errors.fullName} required>
           <Input
             id="fullName"
             value={card.fullName}
             onChange={(e) => update({ fullName: e.target.value })}
-            placeholder="John Doe"
+            placeholder={t('editor.fullNamePlaceholder')}
             autoComplete="name"
             invalid={Boolean(errors.fullName)}
           />
         </Field>
 
-        <Field label="Professional title" htmlFor="title" error={errors.title} required>
+        <Field label={t('editor.title')} htmlFor="title" error={errors.title} required>
           <Input
             id="title"
             value={card.title}
             onChange={(e) => update({ title: e.target.value })}
-            placeholder="Senior Product Designer"
+            placeholder={t('editor.titlePlaceholder')}
             autoComplete="organization-title"
             invalid={Boolean(errors.title)}
           />
         </Field>
       </div>
 
-      <Field label="Company or studio" htmlFor="company" hint="Optional">
+      <Field label={t('editor.company')} htmlFor="company" hint={t('editor.optional')}>
         <Input
           id="company"
           value={card.company}
           onChange={(e) => update({ company: e.target.value })}
-          placeholder="Doe Studio"
+          placeholder={t('editor.companyPlaceholder')}
           autoComplete="organization"
         />
       </Field>
 
       <Field
-        label="Short bio"
+        label={t('editor.bio')}
         htmlFor="bio"
         error={errors.bio}
         hint={`${bioLength}/${BIO_LIMIT}`}
@@ -214,7 +216,7 @@ export function IdentitySection({ card, update, errors = {} }) {
           value={card.bio}
           maxLength={BIO_LIMIT}
           onChange={(e) => update({ bio: e.target.value.slice(0, BIO_LIMIT) })}
-          placeholder="One or two sentences about what you do and who you do it for."
+          placeholder={t('editor.bioPlaceholder')}
           invalid={Boolean(errors.bio)}
         />
       </Field>
@@ -222,8 +224,8 @@ export function IdentitySection({ card, update, errors = {} }) {
       <div className="grid gap-6 sm:grid-cols-2">
         <ImageUpload
           id="photo"
-          label="Profile photo"
-          hint="Cropped to a square, the way it appears on your card."
+          label={t('editor.photo')}
+          hint={t('editor.photoHint')}
           value={card.photo}
           onChange={(photo) => update({ photo })}
           round
@@ -237,8 +239,8 @@ export function IdentitySection({ card, update, errors = {} }) {
         <div>
           <ImageUpload
             id="logo"
-            label="Logo (optional)"
-            hint="Shown whole, never cropped, on templates that support branding."
+            label={t('editor.logo')}
+            hint={t('editor.logoHint')}
             value={card.logo}
             onChange={(logo) => update({ logo })}
             fit="contain"
@@ -253,8 +255,8 @@ export function IdentitySection({ card, update, errors = {} }) {
       {templateHasBanner(card.template) ? (
         <ImageUpload
           id="cover"
-          label="Banner image (optional)"
-          hint="Fills the banner behind your name. Cropped to 3:1 — on a phone the centre 2:1 is visible, so keep the subject there. Without one, the banner uses your accent colour."
+          label={t('editor.banner')}
+          hint={t('editor.bannerHint')}
           value={card.cover}
           onChange={(cover) => update({ cover })}
           wide
@@ -262,11 +264,11 @@ export function IdentitySection({ card, update, errors = {} }) {
           cropSafeRatio={2}
         />
       ) : (
-        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-5 py-4">
-          <p className="text-sm font-semibold text-navy-900">No banner on this template</p>
-          <p className="mt-1 text-sm leading-relaxed text-slate-500">
+        <div className="rounded-md border border-dashed border-slate-300 dark:border-navy-700 bg-slate-50 dark:bg-navy-950 px-5 py-4">
+          <p className="text-sm font-semibold text-navy-900 dark:text-white">{t('editor.noBanner')}</p>
+          <p className="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
             {getTemplate(card.template).name} is built without a banner image. Pick Executive, Split or Dark Pro
-            in <span className="font-semibold text-navy-800">Design</span> to add one — your logo still shows here.
+            in <span className="font-semibold text-navy-800 dark:text-slate-100">{t('editor.design')}</span> to add one — your logo still shows here.
           </p>
         </div>
       )}
@@ -323,7 +325,9 @@ function PhoneField({ id, label, hint, error, value, onChange, autoComplete, dis
           <Input
             id={id}
             type="tel"
-            value={formatNational(national)}
+            // Grouped for the country in the button beside it, so the field
+            // reads the same way the finished card will.
+            value={formatNationalFor(dial, national)}
             onChange={(e) => onChange(joinPhone(dial, e.target.value))}
             placeholder="415-5550134"
             autoComplete={autoComplete}
@@ -337,6 +341,7 @@ function PhoneField({ id, label, hint, error, value, onChange, autoComplete, dis
 }
 
 export function ContactSection({ card, update, errors = {} }) {
+  const t = useT()
   /**
    * Most people use one number for both, so WhatsApp follows the phone field
    * until this is ticked. Seeded from the card: a saved WhatsApp number that
@@ -361,7 +366,7 @@ export function ContactSection({ card, update, errors = {} }) {
     <div className="grid gap-6 sm:grid-cols-2">
       <PhoneField
         id="phone"
-        label="Phone number"
+        label={t('editor.phone')}
         error={errors.phone}
         value={card.phone}
         onChange={setPhone}
@@ -369,7 +374,7 @@ export function ContactSection({ card, update, errors = {} }) {
         required
       />
 
-      <Field label="Email address" htmlFor="cardEmail" error={errors.email} required>
+      <Field label={t('editor.email')} htmlFor="cardEmail" error={errors.email} required>
         <Input
           id="cardEmail"
           type="email"
@@ -390,7 +395,7 @@ export function ContactSection({ card, update, errors = {} }) {
           id="separate-whatsapp"
           checked={separateWhatsapp}
           onChange={toggleSeparate}
-          label="I use a different number for WhatsApp"
+          label={t('editor.separateWhatsapp')}
           hint={
             separateWhatsapp
               ? 'Shown as the WhatsApp button on your card.'
@@ -403,27 +408,27 @@ export function ContactSection({ card, update, errors = {} }) {
           but locked to the phone number until the box above is ticked. */}
       <PhoneField
         id="whatsapp"
-        label="WhatsApp number"
+        label={t('editor.whatsapp')}
         value={card.whatsapp}
         onChange={(whatsapp) => update({ whatsapp })}
         disabled={!separateWhatsapp}
       />
 
-      <Field label="City & country" htmlFor="location" hint="Optional">
+      <Field label={t('editor.location')} htmlFor="location" hint={t('editor.optional')}>
         <Input
           id="location"
           value={card.location}
           onChange={(e) => update({ location: e.target.value })}
-          placeholder="San Francisco, USA"
+          placeholder={t('editor.locationPlaceholder')}
           autoComplete="address-level2"
         />
       </Field>
 
       <Field
-        label="Website"
+        label={t('editor.website')}
         htmlFor="website"
         error={errors.website}
-        hint="Optional"
+        hint={t('editor.optional')}
         className="sm:col-span-2"
       >
         <Input
@@ -451,6 +456,7 @@ export const FREE_LINK_LIMIT = 4
 const BLANK_LINK = { id: 'blank', platform: 'instagram', url: '' }
 
 export function LinksSection({ card, update, pro = true }) {
+  const t = useT()
   const links = card.links || []
   const [upgrading, setUpgrading] = useState(false)
 
@@ -502,13 +508,13 @@ export function LinksSection({ card, update, pro = true }) {
           return (
             <li
               key={link.id}
-              className="rounded-md border border-slate-200 bg-white p-3 shadow-[var(--shadow-card)]"
+              className="rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 p-3 shadow-[var(--shadow-card)]"
             >
               <div className="flex items-start gap-3">
                 <span
                   className="mt-2 hidden text-slate-300 sm:block"
                   aria-hidden="true"
-                  title="Use the arrows to reorder"
+                  title={t('editor.reorder')}
                 >
                   <GripVertical size={16} />
                 </span>
@@ -548,12 +554,12 @@ export function LinksSection({ card, update, pro = true }) {
                          the field only ever holds the part that is theirs. */
                       <div
                         className={cx(
-                          'flex h-11 w-full items-stretch overflow-hidden rounded-md border border-slate-300 bg-white',
+                          'flex h-11 w-full items-stretch overflow-hidden rounded-md border border-slate-300 dark:border-navy-700 bg-white dark:bg-navy-900',
                           'transition-colors focus-within:border-accent-500 focus-within:ring-2 focus-within:ring-accent-500/25'
                         )}
                       >
                         <span
-                          className="grid shrink-0 place-items-center border-r border-slate-200 bg-slate-50 px-3 text-sm text-slate-500"
+                          className="grid shrink-0 place-items-center border-r border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 px-3 text-sm text-slate-500 dark:text-slate-400"
                           aria-hidden="true"
                         >
                           {basePrefix(link.platform)}
@@ -566,7 +572,7 @@ export function LinksSection({ card, update, pro = true }) {
                           autoCapitalize="none"
                           autoCorrect="off"
                           spellCheck={false}
-                          className="min-w-0 flex-1 bg-transparent px-3 text-sm text-navy-900 placeholder:text-slate-400 focus:outline-none"
+                          className="min-w-0 flex-1 bg-transparent px-3 text-sm text-navy-900 dark:text-white placeholder:text-slate-400 focus:outline-none"
                         />
                       </div>
                     ) : (
@@ -582,7 +588,7 @@ export function LinksSection({ card, update, pro = true }) {
                       <Input
                         value={link.label || ''}
                         onChange={(e) => patchLink(link.id, { label: e.target.value })}
-                        placeholder="Button label, e.g. “Download my CV”"
+                        placeholder={t('editor.linkLabelPlaceholder')}
                         aria-label={`Label for link ${index + 1}`}
                       />
                     )}
@@ -631,7 +637,7 @@ export function LinksSection({ card, update, pro = true }) {
             <Sparkles size={15} aria-hidden="true" />
             Go Pro to add more links
           </Button>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             Free cards carry {FREE_LINK_LIMIT} links. Pro removes the limit.
           </p>
         </div>
@@ -642,7 +648,7 @@ export function LinksSection({ card, update, pro = true }) {
             {links.length ? 'Add another link' : 'Add a second link'}
           </Button>
           {!pro && (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               {links.length} of {FREE_LINK_LIMIT} links used
             </p>
           )}
@@ -667,6 +673,7 @@ export function LinksSection({ card, update, pro = true }) {
  * where a pick is part of a form the user saves at the end anyway.
  */
 export function TemplateSection({ card, update, confirm = false, onPendingChange, pro = true }) {
+  const t = useT()
   const [pending, setPending] = useState(card.template)
   const [applying, setApplying] = useState(false)
   const [upgrading, setUpgrading] = useState(false)
@@ -710,12 +717,12 @@ export function TemplateSection({ card, update, confirm = false, onPendingChange
   return (
     <div className="space-y-8">
       <div>
-        <h3 className="text-sm font-semibold text-navy-900">Card template</h3>
-        <p className="mt-1 text-sm text-slate-500">Your link stays the same whichever design you pick.</p>
+        <h3 className="text-sm font-semibold text-navy-900 dark:text-white">{t('editor.cardTemplate')}</h3>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('editor.cardTemplateHint')}</p>
 
         <div
           role="radiogroup"
-          aria-label="Card template"
+          aria-label={t('editor.cardTemplate')}
           className="mt-4 grid gap-4 sm:grid-cols-3 lg:grid-cols-5"
         >
           {TEMPLATES.map((template) => {
@@ -730,10 +737,10 @@ export function TemplateSection({ card, update, confirm = false, onPendingChange
                 onClick={() => choose(template.id)}
                 title={locked ? `${template.name} is part of the Pro plan` : undefined}
                 className={cx(
-                  'group relative rounded-md border-2 bg-white p-2 text-left transition-all',
+                  'group relative rounded-md border-2 bg-white dark:bg-navy-900 p-2 text-left transition-all',
                   selected
                     ? 'border-accent-500 shadow-[var(--shadow-card)]'
-                    : 'border-slate-200 hover:border-slate-300'
+                    : 'border-slate-200 dark:border-navy-800 hover:border-slate-300'
                 )}
               >
                 {/* Scaled, not reflowed — a thumbnail must match the real card.
@@ -741,7 +748,7 @@ export function TemplateSection({ card, update, confirm = false, onPendingChange
                     scaled to the tile's width, so height and scale rise
                     together and every tile shows the same slice of card — the
                     whole intro block — whether the grid is 3 or 5 columns. */}
-                <span className="relative block aspect-[5/8] w-full overflow-hidden rounded-xs border border-slate-100 bg-white">
+                <span className="relative block aspect-[5/8] w-full overflow-hidden rounded-xs border border-slate-100 dark:border-navy-800 bg-white dark:bg-navy-900">
                   {/* The card is taller than the tile whatever the ratio, so
                       the bottom edge is softened rather than left as a hard cut
                       through a half-drawn row. The gradient only reaches 35%
@@ -774,9 +781,9 @@ export function TemplateSection({ card, update, confirm = false, onPendingChange
                   )}
                 </span>
                 <span className="mt-2 flex items-center justify-between gap-2 px-1 pb-1">
-                  <span className="text-xs font-bold text-navy-900">{template.name}</span>
+                  <span className="text-xs font-bold text-navy-900 dark:text-white">{template.name}</span>
                   {selected ? (
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-accent-600">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-accent-600 dark:text-accent-300">
                       Selected
                     </span>
                   ) : locked ? (
@@ -802,10 +809,10 @@ export function TemplateSection({ card, update, confirm = false, onPendingChange
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-navy-900">Accent colour</h3>
-        <p className="mt-1 text-sm text-slate-500">Used for buttons, icons and highlights on your card.</p>
+        <h3 className="text-sm font-semibold text-navy-900 dark:text-white">{t('editor.accent')}</h3>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('editor.accentHint')}</p>
 
-        <div role="radiogroup" aria-label="Accent colour" className="mt-4 flex flex-wrap gap-2.5">
+        <div role="radiogroup" aria-label={t('editor.accent')} className="mt-4 flex flex-wrap gap-2.5">
           {ACCENT_COLORS.map((color) => {
             const selected = card.accent === color.value
             return (
@@ -835,14 +842,14 @@ export function TemplateSection({ card, update, confirm = false, onPendingChange
           logo for it to sit behind. */}
       {card.logo && (
         <div>
-          <h3 className="text-sm font-semibold text-navy-900">Logo</h3>
+          <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Logo</h3>
           <div className="mt-4">
             <Checkbox
               id="logo-plate"
               checked={card.logoPlate !== false}
               onChange={(logoPlate) => update({ logoPlate })}
-              label="Add a plate behind my logo"
-              hint="Turn this off if your logo already works on a dark background."
+              label={t('editor.logoPlate')}
+              hint={t('editor.logoPlateHint')}
             />
           </div>
         </div>
@@ -850,16 +857,16 @@ export function TemplateSection({ card, update, confirm = false, onPendingChange
 
       {/* Foot of the panel: the pick above is only a pick until Apply. */}
       {confirm && (
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-5">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 dark:border-navy-800 pt-5">
           {/* Only speaks up when there is something to say — a pending pick. */}
           {lockedPick ? (
-            <p className="mr-auto text-sm text-slate-500">
+            <p className="mr-auto text-sm text-slate-500 dark:text-slate-400">
               {getTemplate(chosen).name} is a Pro design. Preview it as much as you like — applying it
               needs the Pro plan.
             </p>
           ) : (
             dirty && (
-              <p className="mr-auto text-sm text-slate-500">
+              <p className="mr-auto text-sm text-slate-500 dark:text-slate-400">
                 Not applied yet — your card still shows the current design.
               </p>
             )

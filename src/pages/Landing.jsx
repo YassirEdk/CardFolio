@@ -27,79 +27,38 @@ import CardView from '../components/CardView'
 import ScaledCard from '../components/ScaledCard'
 import { Button, Panel, SectionHeading, Badge, BrandMark, ScanCorners, cx } from '../components/ui'
 import { DEMO_CARDS, DEMO_USERNAME, SITE_DOMAIN } from '../data/mockData'
+import { useI18n, useT } from '../lib/i18n'
 import { TEMPLATES } from '../templates'
 
 /* ------------------------------------------------------------------- data */
 
+/**
+ * The page's content, as keys rather than as copy.
+ *
+ * Only the icon is a property of the design; every word belongs to whichever
+ * language the visitor is reading in, so it lives in src/locales and is looked
+ * up at render. That also means adding a language is a file, not an edit to
+ * this page.
+ */
 const FEATURES = [
-  {
-    icon: Link2,
-    title: 'A personal link',
-    body: `Claim ${SITE_DOMAIN}/yourname and put it in your email signature, bio or CV. It never changes, even when your job does.`,
-  },
-  {
-    icon: QrCodeIcon,
-    title: 'A downloadable QR code',
-    body: 'Export a print-ready PNG or vector SVG for your storefront, packaging, name badge or slide deck.',
-  },
-  {
-    icon: LayoutTemplate,
-    title: 'Professional templates',
-    body: 'Five designs built for business — pick one, set your accent colour and switch any time without a new link.',
-  },
-  {
-    icon: Share2,
-    title: 'All your links in one place',
-    body: 'Instagram, Fiverr, Upwork, LinkedIn, WhatsApp and your portfolio site, as large tappable buttons.',
-  },
+  { icon: Link2, key: 'link' },
+  { icon: QrCodeIcon, key: 'qr' },
+  { icon: LayoutTemplate, key: 'templates' },
+  { icon: Share2, key: 'links' },
 ]
 
-const STEPS = [
-  {
-    title: 'Sign up',
-    body: 'Create a free account and claim the username that becomes your permanent card URL.',
-  },
-  {
-    title: 'Fill your info & pick a template',
-    body: 'Add your photo, title, bio, contact details and links, then choose the design that fits your work.',
-  },
-  {
-    title: 'Share your link or QR',
-    body: 'Send the link, show the QR code, or let people tap “Save contact” to land straight in their phone.',
-  },
-]
+const STEPS = ['signup', 'fill', 'share']
 
 const AUDIENCES = [
-  { icon: Briefcase, title: 'Freelancers', body: 'Turn every conversation into a booked call.' },
-  { icon: PenTool, title: 'Designers', body: 'Send your portfolio and socials in one tap.' },
-  { icon: Code2, title: 'Developers', body: 'GitHub, LinkedIn and your rate card together.' },
-  { icon: Camera, title: 'Photographers', body: 'Show your work at the venue, on the spot.' },
-  { icon: Building2, title: 'Consultants', body: 'Look established from the first handshake.' },
-  { icon: Home, title: 'Real-estate agents', body: 'A QR on every listing sign and window.' },
+  { icon: Briefcase, key: 'freelancers' },
+  { icon: PenTool, key: 'designers' },
+  { icon: Code2, key: 'developers' },
+  { icon: Camera, key: 'photographers' },
+  { icon: Building2, key: 'consultants' },
+  { icon: Home, key: 'agents' },
 ]
 
-const FAQS = [
-  {
-    q: 'Do the people I share my card with need an app?',
-    a: 'No. Your card is a normal web page. Anyone can open the link or scan the QR code with their phone camera — nothing to install on either side.',
-  },
-  {
-    q: 'Can I change my details after I publish?',
-    a: 'Yes, and that is the point. Edit anything from your dashboard and the change is live instantly. Your link and QR code stay exactly the same, so printed codes never go stale.',
-  },
-  {
-    q: 'What happens to my card if I cancel Pro?',
-    a: 'Your card stays online on the Free plan. You keep your username, your links and your QR code; the Pro-only extras such as analytics and custom domains are simply paused.',
-  },
-  {
-    q: 'Can I use my own domain name?',
-    a: 'On the Pro plan you can point a domain you own — for example card.yourstudio.com — at your CardFolio card. We issue the SSL certificate automatically.',
-  },
-  {
-    q: 'Does the QR code work in print?',
-    a: 'Yes. Download the vector SVG for anything printed — signage, packaging, roll-ups — or the 1024px PNG for slides and social posts. Both stay sharp at any size.',
-  },
-]
+const FAQS = ['app', 'edit', 'cancel', 'domain', 'print']
 
 /* --------------------------------------------------------------- sections */
 
@@ -218,6 +177,7 @@ function useMedia(query) {
 }
 
 function Hero() {
+  const t = useT()
   const card = DEMO_CARDS.demo
   const stageRef = useRef(null)
   const rawProgress = useScrollProgress(stageRef)
@@ -285,6 +245,16 @@ function Hero() {
   const phoneRef = useRef(null)
   const appliedShift = useRef(0)
   const [centerShift, setCenterShift] = useState(0)
+  /**
+   * Re-measured when the writing direction changes, and not only on resize.
+   *
+   * In Arabic the whole grid mirrors, so the phone rests on the other side of
+   * the screen and has to travel the other way. The direction is also applied
+   * a beat late — the provider writes `dir` on <html> in a passive effect,
+   * which runs after this layout effect — so measuring once on mount reads the
+   * left-to-right position and then holds a shift that points the wrong way.
+   */
+  const { dir } = useI18n()
 
   useLayoutEffect(() => {
     if (!staged) return setCenterShift(0)
@@ -298,10 +268,17 @@ function Hero() {
     }
 
     measure()
+    // And once more after the browser has laid the page out: fonts, a late
+    // `dir` flip and the scrollbar all move the resting position, and all of
+    // them land after this effect runs.
+    const frame = requestAnimationFrame(measure)
     window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-    // `frameScale` too: a different frame is a different resting position.
-  }, [staged, frameScale])
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('resize', measure)
+    }
+    // `frameScale` and `dir` too: either one is a different resting position.
+  }, [staged, frameScale, dir])
 
   const clamp = (t) => Math.min(1, Math.max(0, t))
   const ease = (t) => 1 - Math.pow(1 - t, 3)
@@ -375,7 +352,7 @@ function Hero() {
     <section
       ref={stageRef}
       className={cx(
-        'relative border-b border-slate-200 bg-white',
+        'relative border-b border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900',
         /**
          * `svh`, not `dvh`, off the stage. A phone's dynamic viewport grows as
          * the address bar rolls away mid-scroll, and a centred hero taller than
@@ -441,30 +418,29 @@ function Hero() {
             <div className="animate-fade-up">
               <Badge tone="accent">
                 <span className="h-1.5 w-1.5 rounded-md bg-accent-500" aria-hidden="true" />
-                Trusted by 12,000+ professionals
+                {t('hero.badge')}
               </Badge>
 
-              <h1 className="mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-navy-900 text-balance sm:text-5xl lg:text-[3.4rem]">
-                Your business card should never run out.
+              <h1 className="mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight text-navy-900 dark:text-white text-balance sm:text-5xl lg:text-[3.4rem]">
+                {t('hero.title')}
               </h1>
-              <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">
-                CardFolio turns your contact details, portfolio and social profiles into one professional digital card —
-                shared with a personal link or a QR code, updated in seconds, never reprinted.
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600 dark:text-slate-300">
+                {t('hero.subtitle')}
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button as={Link} to="/signup" size="lg">
-                  Create your free card
-                  <ArrowRight size={17} aria-hidden="true" />
+                  {t('hero.createCard')}
+                  <ArrowRight size={17} aria-hidden="true" className="rtl-flip" />
                 </Button>
                 <Button as={Link} to={`/${DEMO_USERNAME}`} variant="secondary" size="lg">
                   <Smartphone size={17} aria-hidden="true" />
-                  See a live card
+                  {t('hero.seeLiveCard')}
                 </Button>
               </div>
 
-              <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
-                {['Free plan, no card required', 'Ready in under 3 minutes', 'Works on every phone'].map((item) => (
+              <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
+                {[t('hero.freePlan'), t('hero.readyIn'), t('hero.worksEverywhere')].map((item) => (
                   <li key={item} className="inline-flex items-center gap-1.5">
                     <Check size={15} className="text-accent-500" aria-hidden="true" />
                     {item}
@@ -547,9 +523,9 @@ function Hero() {
                     <QrCode value={`https://${SITE_DOMAIN}/${card.username}`} size={132} />
                   </Panel>
                 </div>
-                <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
                   <ScanLine size={14} aria-hidden="true" />
-                  Scan to open
+                  {t('hero.scanToOpen')}
                 </p>
               </div>
             </div>
@@ -561,23 +537,28 @@ function Hero() {
 }
 
 function Features() {
+  const t = useT()
   return (
-    <section id="features" className="scroll-mt-20 border-b border-slate-200 bg-slate-50 py-20 lg:py-24">
+    <section id="features" className="scroll-mt-20 border-b border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 py-20 lg:py-24">
       <div className="container-page">
         <SectionHeading
-          eyebrow="What you get"
-          title="Everything a paper card can’t do"
-          description="One card that holds your whole professional presence and updates the moment your details change."
+          eyebrow={t('landing.features.eyebrow')}
+          title={t('landing.features.title')}
+          description={t('landing.features.description')}
         />
 
         <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map((feature) => (
-            <Panel key={feature.title} className="p-6 transition-shadow hover:shadow-[var(--shadow-lift)]">
+            <Panel key={feature.key} className="p-6 transition-shadow hover:shadow-[var(--shadow-lift)]">
               <span className="grid h-11 w-11 place-items-center rounded-md bg-navy-900 text-white" aria-hidden="true">
                 <feature.icon size={20} />
               </span>
-              <h3 className="mt-5 text-base font-bold text-navy-900">{feature.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">{feature.body}</p>
+              <h3 className="mt-5 text-base font-bold text-navy-900 dark:text-white">
+                {t(`landing.features.${feature.key}.title`)}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                {t(`landing.features.${feature.key}.body`, { domain: SITE_DOMAIN })}
+              </p>
             </Panel>
           ))}
         </div>
@@ -587,29 +568,33 @@ function Features() {
 }
 
 function HowItWorks() {
+  const t = useT()
   return (
-    <section id="how-it-works" className="scroll-mt-20 border-b border-slate-200 py-20 lg:py-24">
+    <section id="how-it-works" className="scroll-mt-20 border-b border-slate-200 dark:border-navy-800 py-20 lg:py-24">
       <div className="container-page">
         <SectionHeading
-          eyebrow="How it works"
-          title="Live in three steps"
-          description="No design skills, no developer, no printer."
+          eyebrow={t('landing.steps.eyebrow')}
+          title={t('landing.steps.title')}
+          description={t('landing.steps.description')}
         />
 
         <ol className="mt-14 grid gap-6 md:grid-cols-3">
           {STEPS.map((step, index) => (
-            <li key={step.title} className="relative">
+            <li key={step} className="relative">
               <Panel className="h-full p-7">
-                <span className="grid h-11 w-11 place-items-center rounded-md border border-accent-100 bg-accent-50 text-lg font-extrabold text-accent-600">
+                <span className="grid h-11 w-11 place-items-center rounded-md border border-accent-100 bg-accent-50 dark:bg-accent-900/30 text-lg font-extrabold text-accent-600 dark:text-accent-300">
                   {index + 1}
                 </span>
-                <h3 className="mt-5 text-lg font-bold text-navy-900">{step.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{step.body}</p>
+                <h3 className="mt-5 text-lg font-bold text-navy-900 dark:text-white">{t(`landing.steps.${step}.title`)}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t(`landing.steps.${step}.body`)}</p>
               </Panel>
               {index < STEPS.length - 1 && (
                 <ArrowRight
                   size={20}
-                  className="absolute -right-4 top-1/2 hidden -translate-y-1/2 text-slate-300 md:block"
+                  // `-end-4` and the flip together: in Arabic the steps run
+                  // right to left, so the connector has to move to the other
+                  // side of the card *and* point the other way.
+                  className="rtl-flip absolute -end-4 top-1/2 hidden -translate-y-1/2 text-slate-300 md:block"
                   aria-hidden="true"
                 />
               )}
@@ -622,29 +607,27 @@ function HowItWorks() {
 }
 
 function WhoItsFor() {
+  const t = useT()
   return (
-    <section id="who-its-for" className="scroll-mt-20 border-b border-slate-200 bg-slate-50 py-20 lg:py-24">
+    <section id="who-its-for" className="scroll-mt-20 border-b border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 py-20 lg:py-24">
       <div className="container-page">
-        <SectionHeading
-          eyebrow="Who it’s for"
-          title="Built for people who introduce themselves for a living"
-        />
+        <SectionHeading eyebrow={t('landing.audiences.eyebrow')} title={t('landing.audiences.title')} />
 
         <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {AUDIENCES.map((audience) => (
             <div
-              key={audience.title}
-              className="flex items-start gap-4 rounded-md border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300"
+              key={audience.key}
+              className="flex items-start gap-4 rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 p-5 transition-colors hover:border-slate-300"
             >
               <span
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-accent-50 text-accent-600"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-accent-50 dark:bg-accent-900/30 text-accent-600 dark:text-accent-300"
                 aria-hidden="true"
               >
                 <audience.icon size={18} />
               </span>
               <div>
-                <h3 className="text-sm font-bold text-navy-900">{audience.title}</h3>
-                <p className="mt-1 text-sm text-slate-600">{audience.body}</p>
+                <h3 className="text-sm font-bold text-navy-900 dark:text-white">{t(`landing.audiences.${audience.key}.title`)}</h3>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{t(`landing.audiences.${audience.key}.body`)}</p>
               </div>
             </div>
           ))}
@@ -655,6 +638,7 @@ function WhoItsFor() {
 }
 
 function TemplatesShowcase() {
+  const t = useT()
   const previews = [
     { template: 'minimal', card: DEMO_CARDS.demo },
     { template: 'executive', card: DEMO_CARDS.demo },
@@ -663,12 +647,12 @@ function TemplatesShowcase() {
   ]
 
   return (
-    <section id="templates" className="scroll-mt-20 border-b border-slate-200 py-20 lg:py-24">
+    <section id="templates" className="scroll-mt-20 border-b border-slate-200 dark:border-navy-800 py-20 lg:py-24">
       <div className="container-page">
         <SectionHeading
-          eyebrow="Templates"
-          title="Designs that look like you mean business"
-          description="Every template shares the same information — switch whenever you like, your link stays the same."
+          eyebrow={t('landing.templates.eyebrow')}
+          title={t('landing.templates.title')}
+          description={t('landing.templates.description')}
         />
 
         <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -676,16 +660,16 @@ function TemplatesShowcase() {
             const meta = TEMPLATES.find((t) => t.id === template)
             return (
               <div key={template} className="flex flex-col items-center">
-                <div className="w-full overflow-hidden rounded-md border border-slate-200 bg-slate-50 p-4 shadow-[var(--shadow-card)]">
+                <div className="w-full overflow-hidden rounded-md border border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 p-4 shadow-[var(--shadow-card)]">
                   {/* Scaled, not reflowed, so the preview matches the real card. */}
-                  <div className="mx-auto h-[380px] w-full max-w-[240px] overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <div className="mx-auto h-[380px] w-full max-w-[240px] overflow-hidden rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900">
                     <ScaledCard>
                       <CardView card={{ ...card, template }} interactive={false} />
                     </ScaledCard>
                   </div>
                 </div>
-                <h3 className="mt-4 text-sm font-bold text-navy-900">{meta.name}</h3>
-                <p className="mt-1 px-2 text-center text-xs leading-relaxed text-slate-500">{meta.description}</p>
+                <h3 className="mt-4 text-sm font-bold text-navy-900 dark:text-white">{meta.name}</h3>
+                <p className="mt-1 px-2 text-center text-xs leading-relaxed text-slate-500 dark:text-slate-400">{meta.description}</p>
               </div>
             )
           })}
@@ -702,13 +686,14 @@ function TemplatesShowcase() {
 }
 
 function Pricing() {
+  const t = useT()
   return (
-    <section id="pricing" className="scroll-mt-20 border-b border-slate-200 bg-slate-50 py-20 lg:py-24">
+    <section id="pricing" className="scroll-mt-20 border-b border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 py-20 lg:py-24">
       <div className="container-page">
         <SectionHeading
-          eyebrow="Pricing"
-          title="Start free. Upgrade when it pays for itself."
-          description="No setup fees, no per-scan charges, cancel any time."
+          eyebrow={t('landing.pricing.eyebrow')}
+          title={t('landing.pricing.title')}
+          description={t('landing.pricing.description')}
         />
 
         {/* The product is a business card, so the plans are printed on one:
@@ -720,14 +705,24 @@ function Pricing() {
             const dark = Boolean(plan.highlight)
             return (
               <div
-                key={plan.name}
+                key={t(`plans.${plan.id}.name`)}
                 className={cx(
                   'group relative flex flex-col overflow-hidden rounded-md p-7 lg:p-8',
                   'transition-transform duration-500 ease-out hover:rotate-0 motion-reduce:transform-none motion-reduce:transition-none',
                   index === 0 ? '-rotate-1' : 'rotate-1',
+                  /**
+                   * In the dark theme both cards would otherwise land on the
+                   * same charcoal — the Pro card is navy by design and the
+                   * neutral palette flattens the Free card onto it. Free takes
+                   * a wash of the accent instead: enough blue to read as a
+                   * different piece of card stock, still quiet enough that Pro
+                   * keeps the emphasis.
+                   */
                   dark
                     ? 'bg-navy-900 text-white shadow-[0_22px_48px_-16px_rgba(9,23,41,0.65)] ring-1 ring-navy-950'
-                    : 'bg-white text-navy-900 shadow-[0_18px_40px_-18px_rgba(9,23,41,0.45)] ring-1 ring-slate-200'
+                    : 'bg-white text-navy-900 shadow-[0_18px_40px_-18px_rgba(9,23,41,0.45)] ring-1 ring-slate-200 ' +
+                      'dark:bg-accent-500/10 dark:text-white dark:ring-accent-500/25 ' +
+                      'dark:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)]'
                 )}
               >
                 {/* Card stock: a sheen across the corner, and the accent edge a
@@ -742,7 +737,12 @@ function Pricing() {
                   aria-hidden="true"
                 />
                 <span
-                  className={cx('pointer-events-none absolute inset-x-0 top-0 h-1', dark ? 'bg-accent-500' : 'bg-navy-900')}
+                  // The foil edge: navy on white stock, accent on both dark
+                  // cards — on charcoal a navy line is no line at all.
+                  className={cx(
+                    'pointer-events-none absolute inset-x-0 top-0 h-1',
+                    dark ? 'bg-accent-500' : 'bg-navy-900 dark:bg-accent-400'
+                  )}
                   aria-hidden="true"
                 />
 
@@ -751,15 +751,15 @@ function Pricing() {
                     <h3
                       className={cx(
                         'text-[11px] font-bold uppercase tracking-[0.18em]',
-                        dark ? 'text-slate-400' : 'text-slate-500'
+                        dark ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400'
                       )}
                     >
-                      {plan.name}
+                      {t(`plans.${plan.id}.name`)}
                     </h3>
                     <p className="mt-3 flex items-baseline gap-1.5">
                       <span className="text-4xl font-extrabold tracking-tight">{plan.price}</span>
-                      <span className={cx('text-sm font-medium', dark ? 'text-slate-400' : 'text-slate-500')}>
-                        {plan.cadence}
+                      <span className={cx('text-sm font-medium', dark ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400')}>
+                        {t(`plans.${plan.id}.cadence`)}
                       </span>
                     </p>
                   </div>
@@ -769,20 +769,22 @@ function Pricing() {
                   <BrandMark invert={dark} className="h-11 w-11 shrink-0" />
                 </div>
 
-                <p className={cx('relative mt-4 text-sm', dark ? 'text-slate-300' : 'text-slate-600')}>
-                  {plan.description}
+                <p className={cx('relative mt-4 text-sm', dark ? 'text-slate-300' : 'text-slate-600 dark:text-slate-300')}>
+                  {t(`plans.${plan.id}.description`)}
                 </p>
 
                 <span
-                  className={cx('relative mt-6 block h-px', dark ? 'bg-white/15' : 'bg-slate-200')}
+                  className={cx('relative mt-6 block h-px', dark ? 'bg-white/15' : 'bg-slate-200 dark:bg-navy-800')}
                   aria-hidden="true"
                 />
 
                 <ul className="relative mt-6 flex-1 space-y-3">
-                  {plan.features.map((feature) => (
+                  {Array.from({ length: plan.featureCount }, (_, i) =>
+                    t(`plans.${plan.id}.features.${i}`, { domain: SITE_DOMAIN })
+                  ).map((feature) => (
                     <li
                       key={feature}
-                      className={cx('flex items-start gap-2.5 text-sm', dark ? 'text-slate-200' : 'text-slate-700')}
+                      className={cx('flex items-start gap-2.5 text-sm', dark ? 'text-slate-200' : 'text-slate-700 dark:text-slate-200')}
                     >
                       <Check
                         size={16}
@@ -801,7 +803,7 @@ function Pricing() {
                   size="lg"
                   className="relative mt-8 w-full"
                 >
-                  {plan.cta}
+                  {t(`plans.${plan.id}.cta`)}
                 </Button>
               </div>
             )
@@ -813,18 +815,19 @@ function Pricing() {
 }
 
 function Faq() {
+  const t = useT()
   const [open, setOpen] = useState(0)
 
   return (
     <section id="faq" className="scroll-mt-20 py-20 lg:py-24">
       <div className="container-page">
-        <SectionHeading eyebrow="FAQ" title="Questions, answered" />
+        <SectionHeading eyebrow={t('landing.faq.eyebrow')} title={t('landing.faq.title')} />
 
-        <div className="mx-auto mt-12 max-w-3xl divide-y divide-slate-200 border-y border-slate-200">
+        <div className="mx-auto mt-12 max-w-3xl divide-y divide-slate-200 border-y border-slate-200 dark:border-navy-800">
           {FAQS.map((faq, index) => {
             const expanded = open === index
             return (
-              <div key={faq.q}>
+              <div key={faq}>
                 <h3>
                   <button
                     type="button"
@@ -834,7 +837,7 @@ function Faq() {
                     id={`faq-trigger-${index}`}
                     className="flex w-full items-center justify-between gap-6 py-5 text-left"
                   >
-                    <span className="text-base font-semibold text-navy-900">{faq.q}</span>
+                    <span className="text-base font-semibold text-navy-900 dark:text-white">{t(`landing.faq.${faq}.q`)}</span>
                     <ChevronDown
                       size={18}
                       aria-hidden="true"
@@ -852,7 +855,7 @@ function Faq() {
                   hidden={!expanded}
                   className="pb-5 pr-10"
                 >
-                  <p className="text-sm leading-relaxed text-slate-600">{faq.a}</p>
+                  <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t(`landing.faq.${faq}.a`)}</p>
                 </div>
               </div>
             )
@@ -864,23 +867,22 @@ function Faq() {
 }
 
 function FinalCta() {
+  const t = useT()
   return (
     <section className="relative overflow-hidden bg-navy-900 py-16 lg:py-20">
       <AnimatedBackdrop tone="dark" />
       <div className="container-page relative flex flex-col items-center gap-7 text-center">
         <h2 className="max-w-2xl text-3xl font-bold tracking-tight text-white text-balance sm:text-4xl">
-          Claim your username before someone else does
+          {t('cta.title')}
         </h2>
-        <p className="max-w-xl text-base leading-relaxed text-slate-300">
-          It takes three minutes and costs nothing. Your next contact will be impressed.
-        </p>
+        <p className="max-w-xl text-base leading-relaxed text-slate-300">{t('cta.subtitle')}</p>
         <div className="flex flex-col gap-3 sm:flex-row">
           <Button as={Link} to="/signup" size="lg">
-            Create your free card
-            <ArrowRight size={17} aria-hidden="true" />
+            {t('hero.createCard')}
+            <ArrowRight size={17} aria-hidden="true" className="rtl-flip" />
           </Button>
           <Button as={Link} to={`/${DEMO_USERNAME}`} size="lg" variant="ghostOnDark">
-            View the demo
+            {t('cta.viewDemo')}
           </Button>
         </div>
       </div>
@@ -892,7 +894,7 @@ function FinalCta() {
 
 export default function Landing() {
   return (
-    <div className="min-h-dvh bg-white">
+    <div className="min-h-dvh bg-white dark:bg-navy-900">
       <SiteHeader />
       <main>
         <Hero />

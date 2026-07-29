@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { TEMPLATES } from '../templates'
 import { DEMO_USERNAME } from '../data/mockData'
 import { api } from '../lib/api'
@@ -8,6 +9,8 @@ import DesktopCard from '../desktop/DesktopCard'
 import PhoneFrame from '../components/PhoneFrame'
 import ViewToggle from '../components/ViewToggle'
 import NotFound from './NotFound'
+import { useI18n } from '../lib/i18n'
+import { cx } from '../components/ui'
 
 /** Skeleton shown while the card is loading — mirrors the card's real rhythm. */
 function CardSkeleton() {
@@ -34,6 +37,7 @@ function CardSkeleton() {
 }
 
 export default function PublicCard() {
+  const { lang, dir, t } = useI18n()
   const { username } = useParams()
   const [params, setParams] = useSearchParams()
   const [state, setState] = useState({ status: 'loading', card: null })
@@ -174,8 +178,45 @@ export default function PublicCard() {
     return <NotFound context="card" username={username} />
   }
 
-  const card = override ? { ...state.card, template: override } : state.card
+  const base = override ? { ...state.card, template: override } : state.card
   const isDemo = String(username).toLowerCase() === DEMO_USERNAME
+
+  /**
+   * The demo card speaks the visitor's language; every other card does not.
+   *
+   * A real card's words were written by its owner, and translating them would
+   * be putting words in someone's mouth — worse, it would make the product
+   * look like it edits your card. The demo exists for a different reason: it
+   * is there to show a stranger what a card looks like, and one they cannot
+   * read shows them nothing.
+   */
+  const localised = isDemo && lang !== 'en'
+  const card = localised
+    ? {
+        ...base,
+        fullName: t('demo.fullName'),
+        title: t('demo.title'),
+        company: base.company ? t('demo.company') : base.company,
+        bio: base.bio ? t('demo.bio') : base.bio,
+        location: base.location ? t('demo.location') : base.location,
+        /**
+         * The contact details travel with the person.
+         *
+         * A card headed "الدار البيضاء، المغرب" carrying a San Francisco phone
+         * number and an English studio address is not a translated card, it is
+         * a half-translated one — and the details are the part a visitor reads
+         * to decide whether the product is for them.
+         */
+        phone: base.phone ? t('demo.phone') : base.phone,
+        whatsapp: base.whatsapp ? t('demo.phone') : base.whatsapp,
+        email: base.email ? t('demo.email') : base.email,
+        website: base.website ? t('demo.website') : base.website,
+      }
+    : base
+
+  // The card is laid out for its own content, so a translated demo mirrors
+  // with the language while a real English card stays left-to-right.
+  const cardDir = localised ? dir : 'ltr'
 
   return (
     <div className="min-h-dvh bg-slate-100" onClickCapture={trackClick}>
@@ -183,26 +224,57 @@ export default function PublicCard() {
           a real card should look like a card, not like a preview with chrome
           on it. It also needs a wide screen — on a phone there is no room for
           the desktop layout, so there would be nothing to switch to. */}
+      {/**
+        * The way back.
+        *
+        * A public card is a dead end by design — it is somebody's card, not a
+        * page of this site — but a visitor who arrived by tapping "see a live
+        * card" is still inside the product and has no browser Back to lean on
+        * if the link opened in a new tab. Floating, so it never becomes part
+        * of the card it sits over.
+        */}
+      <Link
+        to="/"
+        className={cx(
+          'fixed start-5 top-5 z-50 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold shadow-[var(--shadow-card)] backdrop-blur transition-colors',
+          'border-slate-200 bg-white/90 text-navy-900 hover:bg-white',
+          'dark:border-navy-700 dark:bg-navy-900/90 dark:text-white dark:hover:bg-navy-900'
+        )}
+      >
+        <ArrowLeft size={16} aria-hidden="true" className="rtl-flip" />
+        {t('publicCard.backHome')}
+      </Link>
+
       {wide && isDemo && (
         <ViewToggle
           view={view}
           onChange={setView}
-          className="fixed right-5 top-5 z-50"
+          className="fixed end-5 top-5 z-50"
         />
       )}
 
       {wide && (!isDemo || view === 'desktop') ? (
-        <DesktopCard card={card} />
+        // Same reason as ScaledCard: the card's layout is the card's, not the
+        // visitor's interface language.
+        <div dir={cardDir} className={cx(cardDir === 'rtl' && 'bidi-plaintext')}>
+          <DesktopCard card={card} />
+        </div>
       ) : wide ? (
         // The phone layout on a big screen, shown in the device it was drawn
         // for rather than as a narrow column floating in the middle.
         <div className="flex min-h-dvh items-center justify-center py-10">
-          <PhoneFrame scale="lg">
+          <PhoneFrame scale="lg" dir={cardDir}>
             <CardView card={card} />
           </PhoneFrame>
         </div>
       ) : (
-        <main className="mx-auto min-h-dvh w-full max-w-md bg-white shadow-[var(--shadow-lift)]">
+        <main
+          dir={cardDir}
+          className={cx(
+            'mx-auto min-h-dvh w-full max-w-md bg-white shadow-[var(--shadow-lift)]',
+            cardDir === 'rtl' && 'bidi-plaintext'
+          )}
+        >
           <CardView card={card} />
         </main>
       )}

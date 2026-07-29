@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Check, Sparkles, X } from 'lucide-react'
 import { Button, BrandMark, cx } from './ui'
 import { PLANS } from '../data/plans'
+import { SITE_DOMAIN } from '../data/mockData'
+import { useT } from '../lib/i18n'
 import { useAuth } from '../lib/auth'
 import { useToast } from './Toast'
 
@@ -16,6 +18,7 @@ import { useToast } from './Toast'
 export default function UpgradeDialog({ reason, onClose }) {
   const { setPlan } = useAuth()
   const toast = useToast()
+  const t = useT()
   const [taking, setTaking] = useState(false)
 
   async function take() {
@@ -43,25 +46,25 @@ export default function UpgradeDialog({ reason, onClose }) {
       className="animate-scrim-in fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-navy-950/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="Plans"
+      aria-label={t('editor.plans')}
       onMouseDown={(event) => event.target === event.currentTarget && onClose?.()}
     >
-      <div className="animate-dialog-in my-auto w-full max-w-3xl overflow-hidden rounded-md border border-slate-200 bg-white shadow-[var(--shadow-lift)]">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div className="animate-dialog-in my-auto w-full max-w-3xl overflow-hidden rounded-md border border-slate-200 dark:border-navy-800 bg-white dark:bg-navy-900 shadow-[var(--shadow-lift)]">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 dark:border-navy-800 px-6 py-5">
           <div>
-            <h2 className="flex items-center gap-2 text-base font-bold text-navy-900">
-              <Sparkles size={17} className="text-accent-600" aria-hidden="true" />
+            <h2 className="flex items-center gap-2 text-base font-bold text-navy-900 dark:text-white">
+              <Sparkles size={17} className="text-accent-600 dark:text-accent-300" aria-hidden="true" />
               Upgrade to Pro
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               {reason || 'Unlock every template and the rest of the Pro toolkit.'}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-navy-900"
+            aria-label={t('editor.close')}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-slate-200 dark:border-navy-800 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 hover:text-navy-900"
           >
             <X size={17} />
           </button>
@@ -83,11 +86,17 @@ export default function UpgradeDialog({ reason, onClose }) {
                   'hover:-translate-y-0.5 motion-reduce:transform-none motion-reduce:transition-none',
                   dark
                     ? 'bg-navy-900 text-white shadow-[0_16px_34px_-16px_rgba(9,23,41,0.6)] ring-1 ring-navy-950'
-                    : 'bg-white text-navy-900 ring-1 ring-slate-200'
+                    : 'bg-white text-navy-900 ring-1 ring-slate-200 ' +
+                      // Same treatment as the pricing section: a wash of accent
+                      // so the free card is not the same charcoal as the Pro one.
+                      'dark:bg-accent-500/10 dark:text-white dark:ring-accent-500/25'
                 )}
               >
                 <span
-                  className={cx('pointer-events-none absolute inset-x-0 top-0 h-1', dark ? 'bg-accent-500' : 'bg-navy-900')}
+                  className={cx(
+                    'pointer-events-none absolute inset-x-0 top-0 h-1',
+                    dark ? 'bg-accent-500' : 'bg-navy-900 dark:bg-accent-400'
+                  )}
                   aria-hidden="true"
                 />
 
@@ -95,38 +104,40 @@ export default function UpgradeDialog({ reason, onClose }) {
                   <h3
                     className={cx(
                       'text-[11px] font-bold uppercase tracking-[0.18em]',
-                      dark ? 'text-slate-400' : 'text-slate-500'
+                      dark ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400'
                     )}
                   >
-                    {plan.name}
+                    {t(`plans.${plan.id}.name`)}
                   </h3>
                   <BrandMark invert={dark} className="h-9 w-9 shrink-0" />
                 </div>
 
                 <p className="mt-3 flex items-baseline gap-1.5">
                   <span className="text-3xl font-extrabold tracking-tight">{plan.price}</span>
-                  <span className={cx('text-sm font-medium', dark ? 'text-slate-400' : 'text-slate-500')}>
-                    {plan.cadence}
+                  <span className={cx('text-sm font-medium', dark ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400')}>
+                    {t(`plans.${plan.id}.cadence`)}
                   </span>
                 </p>
-                <p className={cx('mt-2 text-sm', dark ? 'text-slate-300' : 'text-slate-600')}>
-                  {plan.description}
+                <p className={cx('mt-2 text-sm', dark ? 'text-slate-300' : 'text-slate-600 dark:text-slate-300')}>
+                  {t(`plans.${plan.id}.description`)}
                 </p>
 
                 <span
-                  className={cx('mt-4 block h-px', dark ? 'bg-white/15' : 'bg-slate-200')}
+                  className={cx('mt-4 block h-px', dark ? 'bg-white/15' : 'bg-slate-200 dark:bg-navy-800')}
                   aria-hidden="true"
                 />
 
                 <ul className="mt-4 space-y-2">
-                  {plan.features.map((feature) => (
+                  {Array.from({ length: plan.featureCount }, (_, i) =>
+                    t(`plans.${plan.id}.features.${i}`, { domain: SITE_DOMAIN })
+                  ).map((feature) => (
                     <li
                       key={feature}
-                      className={cx('flex items-start gap-2 text-sm', dark ? 'text-slate-200' : 'text-slate-600')}
+                      className={cx('flex items-start gap-2 text-sm', dark ? 'text-slate-200' : 'text-slate-600 dark:text-slate-300')}
                     >
                       <Check
                         size={15}
-                        className={cx('mt-0.5 shrink-0', dark ? 'text-accent-400' : 'text-accent-600')}
+                        className={cx('mt-0.5 shrink-0', dark ? 'text-accent-400' : 'text-accent-600 dark:text-accent-300')}
                         aria-hidden="true"
                       />
                       {feature}
@@ -141,7 +152,7 @@ export default function UpgradeDialog({ reason, onClose }) {
         {/* Takes the plan there and then. There is no checkout behind this
             yet — see PUT /api/me/plan — so it switches the account straight
             over; a payment step slots in front of the same call later. */}
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 px-6 py-4">
           <Button type="button" variant="ghost" onClick={onClose} disabled={taking}>
             Not now
           </Button>

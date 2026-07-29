@@ -83,6 +83,27 @@ export function AuthProvider({ children }) {
     return updated
   }, [])
 
+  /**
+   * Re-reads the account from the server.
+   *
+   * For state that changes somewhere other than this tab — confirming an email
+   * from the link, which may well be opened in a different browser entirely.
+   * Silent on failure: it is a refresh, not a sign-in, and a network blip
+   * should not throw someone out.
+   */
+  const refresh = useCallback(async () => {
+    if (!getToken()) return null
+    try {
+      const { user: u, card: c } = await api.me()
+      setUser(u)
+      setCard(c)
+      setStatus('authenticated')
+      return u
+    } catch {
+      return null
+    }
+  }, [])
+
   /** Plan changes come back as a fresh user, so the UI unlocks immediately. */
   const setPlan = useCallback(async (plan) => {
     const updated = await api.setPlan(plan)
@@ -91,8 +112,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, card, status, login, signup, loginWithGoogle, logout, saveCard, setCard, setPlan, savePrefs, deleteAccount }),
-    [user, card, status, login, signup, loginWithGoogle, logout, saveCard, setPlan, savePrefs, deleteAccount]
+    () => ({ user, card, status, login, signup, loginWithGoogle, logout, saveCard, setCard, setPlan, savePrefs, deleteAccount, refresh }),
+    [user, card, status, login, signup, loginWithGoogle, logout, saveCard, setPlan, savePrefs, deleteAccount, refresh]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
