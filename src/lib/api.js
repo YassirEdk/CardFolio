@@ -129,8 +129,14 @@ export const api = {
   /** Account-level preferences (currently just the weekly email opt-in). */
   setPrefs: (prefs) => request('/me/prefs', { method: 'PUT', body: prefs, auth: true }).then((r) => r.user),
 
-  /** Switches the signed-in account's plan. See the route: no billing yet. */
+  /**
+   * Downgrades the signed-in account. Only 'free' is accepted — Pro comes
+   * from the billing webhook, so there is nothing here that can grant it.
+   */
   setPlan: (plan) => request('/me/plan', { method: 'PUT', body: { plan }, auth: true }).then((r) => r.user),
+
+  /** Paddle's own screens for changing the card or cancelling. */
+  billingPortal: () => request('/billing/portal', { auth: true }),
 
   /** Permanent: the card, its links and its analytics go with the account. */
   deleteAccount: () => request('/me', { method: 'DELETE', auth: true }),

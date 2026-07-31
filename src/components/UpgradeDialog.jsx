@@ -5,6 +5,7 @@ import { PLANS } from '../data/plans'
 import { SITE_DOMAIN } from '../data/mockData'
 import { useT } from '../lib/i18n'
 import { useAuth } from '../lib/auth'
+import { billingConfigured, openProCheckout } from '../lib/paddle'
 import { useToast } from './Toast'
 
 /**
@@ -16,19 +17,62 @@ import { useToast } from './Toast'
  * `reason` is the one-line context — which template they were reaching for.
  */
 export default function UpgradeDialog({ reason, onClose }) {
-  const { setPlan } = useAuth()
+  const { user, refresh } = useAuth()
   const toast = useToast()
   const t = useT()
   const [taking, setTaking] = useState(false)
 
+  /**
+   * Hands over to Paddle and waits to be told what happened — by the server.
+   *
+   * The overlay closing says nothing about whether money moved: someone can
+   * close it having paid, or having changed their mind, and the browser
+   * cannot tell the two apart. Paddle's webhook is what sets the plan, so the
+   * only correct thing to do here is re-read the session and show whatever it
+   * says. The webhook usually lands within a second or two of the payment,
+   * which is why one re-read on close is enough in practice.
+   */
   async function take() {
+    if (!billingConfigured) {
+      toast('Payments are not set up yet on this deployment.', 'info')
+      return
+    }
     setTaking(true)
     try {
-      await setPlan('pro')
-      toast('You’re on Pro — every template is unlocked')
-      onClose?.()
+      await openProCheckout({
+        user,
+        onClose: async (event) => {
+          // Closed without paying: nothing to wait for, put the button back.
+          if (event?.name !== 'checkout.completed') {
+            setTaking(false)
+            return
+          }
+
+          /**
+           * Paid — but the plan is set by a webhook travelling from Paddle to
+           * our server, not by this browser, so it may not have landed yet.
+           * A single re-read would sometimes show Free to somebody who just
+           * paid, which is the worst moment to look broken. A few attempts a
+           * second apart covers the normal case without spinning forever.
+           */
+          for (let attempt = 0; attempt < 5; attempt += 1) {
+            const next = await refresh?.()
+            if (next?.plan === 'pro') {
+              toast('You’re on Pro — every template is unlocked')
+              setTaking(false)
+              onClose?.()
+              return
+            }
+            await new Promise((r) => setTimeout(r, 1000))
+          }
+
+          // Paid, but the plan has not arrived. Never imply it failed.
+          toast('Payment received — your plan is updating. Reload in a moment.', 'info')
+          setTaking(false)
+        },
+      })
     } catch (error) {
-      toast(error.message || 'Could not switch your plan', 'info')
+      toast(error.message || 'Could not open checkout', 'info')
       setTaking(false)
     }
   }
@@ -149,9 +193,9 @@ export default function UpgradeDialog({ reason, onClose }) {
           })}
         </div>
 
-        {/* Takes the plan there and then. There is no checkout behind this
-            yet — see PUT /api/me/plan — so it switches the account straight
-            over; a payment step slots in front of the same call later. */}
+        {/* Opens Paddle's overlay. The plan is not changed here — the webhook
+            does that — so this button starts a payment and then waits to be
+            told, rather than announcing success on the browser's say-so. */}
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 px-6 py-4">
           <Button type="button" variant="ghost" onClick={onClose} disabled={taking}>
             Not now

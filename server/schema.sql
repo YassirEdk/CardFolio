@@ -125,3 +125,25 @@ CREATE TABLE IF NOT EXISTS email_verifications (
 );
 
 CREATE INDEX IF NOT EXISTS email_verifications_user_idx ON email_verifications (user_id);
+
+-- ------------------------------------------------------------------ billing
+-- Subscription state, mirrored from Paddle. Paddle remains the source of
+-- truth; these columns exist so a page load does not need a call to their API.
+--
+-- `current_period_end` is what makes cancellation humane: a subscription that
+-- is cancelled stays on Pro until the period already paid for runs out, so the
+-- column is read alongside the status rather than the status alone.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS billing_customer_id text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_id     text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS current_period_end  timestamptz;
+
+-- Webhooks arrive more than once — Paddle retries until it gets a 200, and a
+-- retry after a successful-but-slow response is normal. The event id is the
+-- primary key, so a replay is a duplicate-key conflict rather than a second
+-- subscription. Nothing reads this table; existing is its whole job.
+CREATE TABLE IF NOT EXISTS billing_events (
+  event_id     text PRIMARY KEY,
+  event_type   text        NOT NULL,
+  processed_at timestamptz NOT NULL DEFAULT now()
+);

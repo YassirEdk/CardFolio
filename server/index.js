@@ -5,7 +5,7 @@ import express from 'express'
 import cors from 'cors'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { OAuth2Client } from 'google-auth-library'
 import nodemailer from 'nodemailer'
 import { pool, query, transaction, toCard } from './db.js'
@@ -21,6 +21,17 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-change-me'
  */
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || ''
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID)
+
+/**
+ * The billing webhook keeps its body as raw bytes. Order matters here.
+ *
+ * Paddle signs the exact bytes it sent. `express.json()` parses them and
+ * throws the original away, and re-serialising the object gives back a
+ * different byte sequence — different key order, different spacing — so the
+ * signature never matches and every legitimate webhook is rejected as forged.
+ * Mounted above the JSON parser because the first matching body parser wins.
+ */
+app.use('/api/billing/webhook', express.raw({ type: '*/*' }))
 
 // Data-URL images make request bodies large; allow room for them.
 app.use(express.json({ limit: '8mb' }))
@@ -45,6 +56,13 @@ function sign(user) {
  * The user as the client is allowed to see it. `plan` defaults to free here as
  * well as in the column: a row read before the migration ran, or any future
  * query that forgets the field, must not hand out Pro.
+ *
+ * `email_verified` needs the opposite default and so cannot protect itself the
+ * same way — an old account has to read as verified, which means a SELECT that
+ * omits the column reports every account as verified. Every query feeding this
+ * function must therefore name `email_verified` explicitly; two of them once
+ * did not, and the verification banner vanished the moment someone changed a
+ * preference.
  */
 function publicUser(row) {
   return {
@@ -72,6 +90,23 @@ const VERIFY_TTL_MINUTES = 15
 
 /** Where the link points. Set APP_URL in production; localhost is the default. */
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '')
+
+/**
+ * A localhost link in a deployed environment is a dead letter.
+ *
+ * The email sends, the provider reports success, and the person clicking it
+ * lands on a machine that is not theirs — the one failure mode that looks
+ * entirely healthy from the server's side. Checked at module load rather than
+ * in the startup banner below, because serverless imports this file instead of
+ * running it, so the banner never prints in precisely the deployment where
+ * getting APP_URL wrong is possible.
+ */
+if (/localhost|127\.0\.0\.1/.test(APP_URL) && (process.env.VERCEL || process.env.NODE_ENV === 'production')) {
+  console.error(
+    `APP_URL is ${APP_URL} in a deployed environment — every verification link will point at localhost.\n` +
+      '  Set APP_URL to the public origin of the front end, with no trailing slash.'
+  )
+}
 
 /**
  * The three SMTP vars, and whether they are all there.
@@ -220,7 +255,10 @@ function verificationHtml(user, link) {
                 <table role="presentation" cellpadding="0" cellspacing="0">
                   <tr>
                     <td style="background:${MAIL_ACCENT};border-radius:8px;">
-                      <a href="${link}"
+                      <!-- target="_blank" opens a tab and leaves the inbox where
+                           it was. Without it a webmail client can navigate the
+                           page it is already in, which loses the mailbox. -->
+                      <a href="${link}" target="_blank" rel="noopener noreferrer"
                          style="display:inline-block;padding:13px 26px;font:600 15px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#ffffff;text-decoration:none;">
                         Confirm my email
                       </a>
@@ -236,7 +274,7 @@ function verificationHtml(user, link) {
                 </p>
                 <p style="margin:14px 0 0;font:400 12px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#94a3b8;word-break:break-all;">
                   Or paste this into your browser:<br />
-                  <a href="${link}" style="color:${MAIL_ACCENT};text-decoration:underline;">${link}</a>
+                  <a href="${link}" target="_blank" rel="noopener noreferrer" style="color:${MAIL_ACCENT};text-decoration:underline;">${link}</a>
                 </p>
               </td>
             </tr>
@@ -359,7 +397,19 @@ async function sendVerificationEmail(user, token) {
         text: verificationText(user, link),
       }),
     })
-    if (!response.ok) throw new Error(`Resend replied ${response.status}`)
+    /**
+     * Resend says why in the body; a bare status code does not.
+     *
+     * A 403 in particular has one overwhelmingly common cause — the shared
+     * `onboarding@resend.dev` sender is allowed to deliver only to the address
+     * that owns the Resend account, so every other recipient is refused until
+     * a domain is verified. "Resend replied 403" sends you looking at the API
+     * key; the body names the real problem.
+     */
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      throw new Error(`Resend replied ${response.status}${detail ? ` — ${detail.slice(0, 300)}` : ''}`)
+    }
     return { sent: true }
   } catch (error) {
     // Logged, not raised: the account exists either way, and the person can
@@ -1053,22 +1103,203 @@ app.put('/api/me/card', auth, requireVerified, asyncRoute(async (req, res) => {
 /**
  * Switches the account's plan.
  *
- * NOTE: there is no billing yet, so this grants Pro on request — it is the
- * seam a checkout goes behind, not a paywall. Until a payment provider is
- * wired in, treat Pro as self-service.
+ * Downgrades only. Pro is granted by the billing webhook and nowhere else —
+ * a route that took `pro` from the request body would be a paid plan that any
+ * signed-in person can hand themselves with one curl, which is exactly what
+ * this used to be before checkout existed.
+ *
+ * Cancelling properly goes through Paddle, which keeps the subscription alive
+ * until the paid period ends. This is the blunt version: it drops the plan
+ * immediately and does not stop the billing. It stays because an account that
+ * has no subscription at all — comped, legacy, or from before billing — still
+ * needs a way down.
  */
 app.put('/api/me/plan', auth, asyncRoute(async (req, res) => {
   const plan = String(req.body?.plan || '')
-  if (!['free', 'pro'].includes(plan)) {
-    return res.status(400).json({ error: 'Unknown plan' })
+  if (plan !== 'free') {
+    return res.status(403).json({
+      error: 'Pro is granted by checkout. Start one from the upgrade dialog.',
+      reason: 'checkout-required',
+    })
   }
 
   const { rows } = await query(
-    'UPDATE users SET plan = $1 WHERE id = $2 RETURNING id, full_name, email, plan, weekly_email',
+    'UPDATE users SET plan = $1 WHERE id = $2 RETURNING id, full_name, email, plan, weekly_email, email_verified',
     [plan, req.userId]
   )
   if (!rows[0]) return res.status(404).json({ error: 'Account not found' })
   res.json({ user: publicUser(rows[0]) })
+}))
+
+/* --------------------------------------------------------------- billing */
+
+const PADDLE_API_KEY = process.env.PADDLE_API_KEY || ''
+const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET || ''
+/** Sandbox until a live key is issued; the two environments differ by host. */
+const PADDLE_API = process.env.PADDLE_ENV === 'production'
+  ? 'https://api.paddle.com'
+  : 'https://sandbox-api.paddle.com'
+
+/**
+ * Which subscription states are worth paying for.
+ *
+ * `past_due` is deliberately included. A card that failed to charge is a card
+ * problem, not a decision to leave — Paddle retries for days, and cutting the
+ * account off mid-retry punishes someone whose bank declined a routine renewal.
+ * `canceled` is absent because the period end is what governs it instead.
+ */
+const ACTIVE_STATUSES = new Set(['active', 'trialing', 'past_due'])
+
+/**
+ * Confirms the request really came from Paddle.
+ *
+ * The header carries a timestamp and an HMAC of `timestamp:body`, so the
+ * signature covers when it was sent as well as what — which is what stops a
+ * captured webhook being replayed later. Compared with a timing-safe
+ * comparison: a plain `===` leaks, byte by byte, how much of a guess was
+ * right, and the secret is guessable given enough of those answers.
+ */
+function paddleSignatureValid(rawBody, header) {
+  if (!PADDLE_WEBHOOK_SECRET || !header) return false
+
+  const parts = Object.fromEntries(
+    String(header).split(';').map((pair) => pair.split('=').map((s) => s.trim()))
+  )
+  const { ts, h1 } = parts
+  if (!ts || !h1) return false
+
+  // Five minutes: enough for a retry from a slow queue, not enough for a
+  // captured request to be useful to somebody later.
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false
+
+  const expected = createHmac('sha256', PADDLE_WEBHOOK_SECRET)
+    .update(`${ts}:${rawBody}`)
+    .digest('hex')
+
+  const a = Buffer.from(expected, 'utf8')
+  const b = Buffer.from(String(h1), 'utf8')
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+/**
+ * Finds the account a Paddle event is about.
+ *
+ * `custom_data.user_id` is what checkout attaches, and it is the only link
+ * that exists the very first time someone subscribes. After that the
+ * subscription and customer ids are stored locally and either will do — which
+ * matters for renewals and cancellations, where Paddle sends no custom data.
+ */
+async function userForBillingEvent(data) {
+  const userId = data?.custom_data?.user_id
+  if (userId) {
+    const { rows } = await query('SELECT id FROM users WHERE id = $1', [userId])
+    if (rows[0]) return rows[0].id
+  }
+  if (data?.id) {
+    const { rows } = await query('SELECT id FROM users WHERE subscription_id = $1', [data.id])
+    if (rows[0]) return rows[0].id
+  }
+  if (data?.customer_id) {
+    const { rows } = await query('SELECT id FROM users WHERE billing_customer_id = $1', [data.customer_id])
+    if (rows[0]) return rows[0].id
+  }
+  return null
+}
+
+/**
+ * Where Paddle reports what happened, and the only thing that grants Pro.
+ *
+ * Unauthenticated by necessity — Paddle has no session — so the signature is
+ * the entire proof, and nothing above this line may read the body.
+ */
+app.post('/api/billing/webhook', asyncRoute(async (req, res) => {
+  const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : ''
+
+  if (!paddleSignatureValid(raw, req.get('Paddle-Signature'))) {
+    console.error('Billing webhook rejected: bad signature')
+    return res.status(401).json({ error: 'Invalid signature' })
+  }
+
+  let event
+  try {
+    event = JSON.parse(raw)
+  } catch {
+    return res.status(400).json({ error: 'Malformed body' })
+  }
+
+  /**
+   * Answer first, work second.
+   *
+   * Paddle retries anything that is not a 2xx, and a duplicate is handled
+   * below anyway. Recording the event id before acting is what makes the
+   * retry harmless: the second delivery conflicts on the primary key and
+   * stops there.
+   */
+  const inserted = await query(
+    'INSERT INTO billing_events (event_id, event_type) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING event_id',
+    [event.event_id, event.event_type]
+  )
+  if (!inserted.rows[0]) return res.json({ ok: true, duplicate: true })
+
+  const data = event.data || {}
+  const userId = await userForBillingEvent(data)
+
+  if (!userId) {
+    // Logged loudly: money changed hands and no account was credited.
+    console.error(`Billing webhook ${event.event_type} matched no account`, {
+      subscription: data.id,
+      customer: data.customer_id,
+    })
+    return res.json({ ok: true, matched: false })
+  }
+
+  if (String(event.event_type).startsWith('subscription.')) {
+    const status = data.status || ''
+    const periodEnd = data.current_billing_period?.ends_at || null
+
+    /**
+     * A cancelled subscription keeps Pro until the period already paid for
+     * runs out. Anything else follows the status directly.
+     */
+    const paidUntilEnd = status === 'canceled' && periodEnd && new Date(periodEnd) > new Date()
+    const plan = ACTIVE_STATUSES.has(status) || paidUntilEnd ? 'pro' : 'free'
+
+    await query(
+      `UPDATE users
+          SET plan = $1, subscription_id = $2, subscription_status = $3,
+              billing_customer_id = COALESCE($4, billing_customer_id), current_period_end = $5
+        WHERE id = $6`,
+      [plan, data.id || null, status, data.customer_id || null, periodEnd, userId]
+    )
+    console.log(`Billing: ${event.event_type} -> ${plan} for ${userId} (${status})`)
+  }
+
+  res.json({ ok: true })
+}))
+
+/**
+ * A link to Paddle's own screens for changing the card or cancelling.
+ *
+ * Fetched live rather than stored: the URLs are signed and expire, so a copy
+ * kept in the database would be a link that works until it quietly does not.
+ */
+app.get('/api/billing/portal', auth, asyncRoute(async (req, res) => {
+  const { rows } = await query('SELECT subscription_id FROM users WHERE id = $1', [req.userId])
+  const subscriptionId = rows[0]?.subscription_id
+  if (!subscriptionId) return res.status(404).json({ error: 'No subscription on this account' })
+  if (!PADDLE_API_KEY) return res.status(503).json({ error: 'Billing is not configured' })
+
+  const response = await fetch(`${PADDLE_API}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    headers: { authorization: `Bearer ${PADDLE_API_KEY}` },
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    console.error('Paddle portal lookup failed:', response.status, detail.slice(0, 300))
+    return res.status(502).json({ error: 'Could not reach the billing provider' })
+  }
+
+  const body = await response.json()
+  res.json({ urls: body?.data?.management_urls || null, status: body?.data?.status || null })
 }))
 
 /**
@@ -1092,7 +1323,7 @@ app.put('/api/me/prefs', auth, requireVerified, asyncRoute(async (req, res) => {
   }
 
   const { rows } = await query(
-    'UPDATE users SET weekly_email = $1 WHERE id = $2 RETURNING id, full_name, email, plan, weekly_email',
+    'UPDATE users SET weekly_email = $1 WHERE id = $2 RETURNING id, full_name, email, plan, weekly_email, email_verified',
     [next, req.userId]
   )
   res.json({ user: publicUser(rows[0]) })
