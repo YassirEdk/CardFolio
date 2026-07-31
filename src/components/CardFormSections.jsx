@@ -633,8 +633,8 @@ export function LinksSection({ card, update, pro = true }) {
         // At the cap the button stops being an add button: it says what the
         // limit is and offers the way past it.
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="button" onClick={() => setUpgrading(true)}>
-            <Sparkles size={15} aria-hidden="true" />
+          <Button type="button" size="lg" onClick={() => setUpgrading(true)}>
+            <Sparkles size={17} aria-hidden="true" />
             Go Pro to add more links
           </Button>
           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -886,8 +886,8 @@ export function TemplateSection({ card, update, confirm = false, onPendingChange
           {/* A locked pick can't be applied, so the primary action becomes the
               way to unlock it rather than a button that refuses. */}
           {lockedPick ? (
-            <Button type="button" onClick={() => setUpgrading(true)}>
-              <Sparkles size={16} aria-hidden="true" />
+            <Button type="button" size="lg" onClick={() => setUpgrading(true)}>
+              <Sparkles size={17} aria-hidden="true" />
               Go Pro
             </Button>
           ) : (

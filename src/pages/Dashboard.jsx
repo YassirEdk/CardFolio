@@ -1064,8 +1064,8 @@ function AnalyticsLocked() {
               </li>
             ))}
           </ul>
-          <Button type="button" className="mt-5" onClick={() => setUpgrading(true)}>
-            <Sparkles size={16} aria-hidden="true" />
+          <Button type="button" size="lg" className="mt-5" onClick={() => setUpgrading(true)}>
+            <Sparkles size={17} aria-hidden="true" />
             Go Pro
           </Button>
         </Panel>
@@ -1376,8 +1376,8 @@ function Settings({ card, setCard, onLogout, pro, user, savePrefs, deleteAccount
                   {t('settings.updateUrl')}
               </Button>
             ) : (
-              <Button type="submit" className="shrink-0">
-                <Sparkles size={15} aria-hidden="true" />
+              <Button type="submit" size="lg" className="shrink-0">
+                <Sparkles size={17} aria-hidden="true" />
                 {t('settings.goPro')}
               </Button>
             )}
@@ -1674,6 +1674,8 @@ export default function Dashboard() {
   const [navOpen, setNavOpen] = useState(false)
   const [analytics, setAnalytics] = useState(EMPTY_ANALYTICS)
   const [avatarFailed, setAvatarFailed] = useState(false)
+  /** The header's own upgrade dialog — reachable from every page, not just the locked ones. */
+  const [upgrading, setUpgrading] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -1815,10 +1817,31 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Whatever the account actually is — a new signup is on free. */}
-            <Badge tone={pro ? 'navy' : 'slate'} className="hidden sm:inline-flex">
-              {pro ? 'Pro plan' : 'Free plan'}
-            </Badge>
+            {/**
+             * Pro states the fact; Free offers the way out of it.
+             *
+             * "Free plan" as a badge spent the most valuable strip of the
+             * screen telling someone something they already knew, with no way
+             * to act on it. The upgrade path otherwise only appears on the
+             * pages that happen to be locked — so anyone browsing the parts
+             * that work never sees one at all. Same slot, same size; it now
+             * does something.
+             */}
+            {pro ? (
+              <Badge tone="navy" className="hidden sm:inline-flex">
+                Pro plan
+              </Badge>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                className="hidden sm:inline-flex"
+                onClick={() => setUpgrading(true)}
+              >
+                <Sparkles size={15} aria-hidden="true" />
+                {t('settings.goPro')}
+              </Button>
+            )}
             <LanguageSelect className="hidden sm:block" />
             <ThemeToggle />
             <AccountMenu card={card} user={user} onLogout={logout} avatarFailed={avatarFailed} onAvatarError={() => setAvatarFailed(true)} />
@@ -1888,6 +1911,15 @@ export default function Dashboard() {
       <MobileTabs />
 
       {showSkipNotice && <SkipNotice onClose={() => setShowSkipNotice(false)} />}
+
+      {/* Opened from the header, so it has to live at this level — the pages
+          below have their own copies for the locks they own. */}
+      {upgrading && (
+        <UpgradeDialog
+          reason="Unlock every template, custom URLs, analytics and the rest of Pro."
+          onClose={() => setUpgrading(false)}
+        />
+      )}
     </div>
   )
 }

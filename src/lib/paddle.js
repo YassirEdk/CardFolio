@@ -63,7 +63,28 @@ async function paddle() {
  * paid — Paddle tells the server that, not the browser. The caller should
  * re-read the session rather than assume.
  */
-export async function openProCheckout({ user, onClose }) {
+/**
+ * Pulls something readable out of a Paddle error event.
+ *
+ * The shape is not documented and has changed between versions, so every place
+ * the reason has been seen to travel is checked in turn rather than trusting
+ * one of them. Falls back to the raw JSON: an unreadable string still names the
+ * problem, which the overlay's own wording never does.
+ */
+function describeError(event) {
+  const error = event?.error || event?.data?.error || event
+  const parts = [error?.code || error?.type, error?.detail || error?.message || error?.reason]
+    .filter(Boolean)
+    .join(' — ')
+  if (parts) return parts
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return 'Paddle refused the checkout without saying why'
+  }
+}
+
+export async function openProCheckout({ user, onClose, onError }) {
   if (!billingConfigured) throw new Error('Billing is not configured')
   if (!user?.id) throw new Error('Sign in before upgrading')
 
@@ -79,6 +100,18 @@ export async function openProCheckout({ user, onClose }) {
       displayMode: 'overlay',
     },
     eventCallback: (event) => {
+      /**
+       * Paddle's overlay says "Something went wrong" for every refusal it
+       * has — an unapproved domain, an account still in review, a price from
+       * the other environment — and the reason travels in the event rather
+       * than on the screen. Logged in full, and handed to the caller as a
+       * sentence, because without it the only information available is a
+       * message that fits all three.
+       */
+      if (event?.name === 'checkout.error' || event?.error) {
+        console.error('[paddle] checkout error:', event?.error || event, '\nfull event:', event)
+        onError?.(describeError(event))
+      }
       if (event?.name === 'checkout.closed' || event?.name === 'checkout.completed') onClose?.(event)
     },
   })

@@ -21,6 +21,13 @@ export default function UpgradeDialog({ reason, onClose }) {
   const toast = useToast()
   const t = useT()
   const [taking, setTaking] = useState(false)
+  /**
+   * Whatever Paddle said when it refused. Its overlay shows one sentence for
+   * every possible cause — unapproved domain, account in review, wrong
+   * environment — so the real reason is printed here instead of being left in
+   * a console nobody has open.
+   */
+  const [checkoutError, setCheckoutError] = useState('')
 
   /**
    * Hands over to Paddle and waits to be told what happened — by the server.
@@ -38,9 +45,11 @@ export default function UpgradeDialog({ reason, onClose }) {
       return
     }
     setTaking(true)
+    setCheckoutError('')
     try {
       await openProCheckout({
         user,
+        onError: setCheckoutError,
         onClose: async (event) => {
           // Closed without paying: nothing to wait for, put the button back.
           if (event?.name !== 'checkout.completed') {
@@ -72,6 +81,7 @@ export default function UpgradeDialog({ reason, onClose }) {
         },
       })
     } catch (error) {
+      setCheckoutError(error.message || 'Could not open checkout')
       toast(error.message || 'Could not open checkout', 'info')
       setTaking(false)
     }
@@ -197,11 +207,19 @@ export default function UpgradeDialog({ reason, onClose }) {
             does that — so this button starts a payment and then waits to be
             told, rather than announcing success on the browser's say-so. */}
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 dark:border-navy-800 bg-slate-50 dark:bg-navy-950 px-6 py-4">
+          {checkoutError && (
+            <p
+              role="alert"
+              className="mr-auto max-w-full break-words text-left text-xs text-rose-600 dark:text-rose-400"
+            >
+              {checkoutError}
+            </p>
+          )}
           <Button type="button" variant="ghost" onClick={onClose} disabled={taking}>
             Not now
           </Button>
-          <Button type="button" onClick={take} loading={taking}>
-            <Sparkles size={16} aria-hidden="true" />
+          <Button type="button" size="lg" onClick={take} loading={taking}>
+            <Sparkles size={17} aria-hidden="true" />
             Take it
           </Button>
         </div>
