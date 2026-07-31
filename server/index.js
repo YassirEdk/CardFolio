@@ -88,24 +88,48 @@ function publicUser(row) {
  */
 const VERIFY_TTL_MINUTES = 15
 
-/** Where the link points. Set APP_URL in production; localhost is the default. */
-const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '')
+const isLocalOrigin = (url) => /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(url)
+
+/** Anywhere the code is not running on the developer's own machine. */
+const DEPLOYED = Boolean(process.env.VERCEL || process.env.NODE_ENV === 'production')
 
 /**
- * A localhost link in a deployed environment is a dead letter.
+ * The origin that emailed links point at.
  *
- * The email sends, the provider reports success, and the person clicking it
- * lands on a machine that is not theirs — the one failure mode that looks
- * entirely healthy from the server's side. Checked at module load rather than
- * in the startup banner below, because serverless imports this file instead of
- * running it, so the banner never prints in precisely the deployment where
- * getting APP_URL wrong is possible.
+ * `APP_URL` decides it, and normally that is the end of the story. The
+ * fallbacks exist because of the one mistake this setting invites: a deployed
+ * server that inherits the localhost default sends links to the recipient's
+ * own machine, where nothing is listening. The email is delivered, the
+ * provider reports success, the server logs nothing — and the person clicking
+ * it sees a browser error, or worse, someone else's dev server.
+ *
+ * Vercel already knows its own hostname, so on Vercel that mistake is
+ * recoverable without asking anyone to remember anything. The production
+ * hostname is preferred over `VERCEL_URL`, which is unique per deployment and
+ * would bake a URL that ages out into a link people keep for days.
+ *
+ * A localhost `APP_URL` is *overridden* rather than obeyed when deployed. It
+ * is never what anyone meant, and honouring it only produces dead mail.
  */
-if (/localhost|127\.0\.0\.1/.test(APP_URL) && (process.env.VERCEL || process.env.NODE_ENV === 'production')) {
+function resolveAppUrl() {
+  const explicit = (process.env.APP_URL || '').trim().replace(/\/$/, '')
+  if (explicit && !(DEPLOYED && isLocalOrigin(explicit))) return explicit
+
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
+  if (DEPLOYED && host) return `https://${host}`.replace(/\/$/, '')
+
+  return explicit || 'http://localhost:5173'
+}
+
+const APP_URL = resolveAppUrl()
+
+if (DEPLOYED && isLocalOrigin(APP_URL)) {
   console.error(
     `APP_URL is ${APP_URL} in a deployed environment — every verification link will point at localhost.\n` +
       '  Set APP_URL to the public origin of the front end, with no trailing slash.'
   )
+} else if (DEPLOYED && !process.env.APP_URL) {
+  console.warn(`APP_URL is unset; using ${APP_URL} from the platform. Set it explicitly to be sure.`)
 }
 
 /**
