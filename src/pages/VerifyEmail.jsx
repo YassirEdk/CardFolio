@@ -79,7 +79,31 @@ export default function VerifyEmail() {
         refresh?.()
       })
       .catch((error) => {
-        setState({ status: error.reason === 'expired' ? 'expired' : 'invalid', email: null })
+        /**
+         * A dead link and a broken server are not the same news.
+         *
+         * Everything used to collapse into "no longer valid", which is a
+         * confident, specific sentence about the token — and it was printed
+         * just as readily when the API never answered at all. Someone whose
+         * database was down spent the afternoon requesting fresh links, each
+         * of which failed the same way and told them the same wrong thing.
+         *
+         * Only the server saying so means the link is bad. Anything else is
+         * our failure and says so, with the status left visible because that
+         * is the one detail that makes it diagnosable from a screenshot.
+         */
+        if (error.reason === 'expired') {
+          setState({ status: 'expired', email: null, detail: null })
+        } else if (error.reason === 'unknown-token' || error.reason === 'missing-token') {
+          setState({ status: 'invalid', email: null, detail: null })
+        } else {
+          console.error('Verification request failed:', error)
+          setState({
+            status: 'error',
+            email: null,
+            detail: error.status ? `HTTP ${error.status}` : 'no response from the server',
+          })
+        }
       })
   }, [token, refresh])
 
@@ -193,6 +217,18 @@ export default function VerifyEmail() {
     },
     expired: { icon: Clock, tone: 'text-amber-600', title: t('verify.expiredTitle'), body: t('verify.expiredBody') },
     invalid: { icon: MailX, tone: 'text-slate-500', title: t('verify.invalidTitle'), body: t('verify.invalidBody') },
+    /**
+     * Our fault, not the link's. Says so, and shows the status code — the
+     * difference between "try again" and "the API is down" is the whole
+     * message, and a person reporting the problem can now quote something
+     * that identifies it.
+     */
+    error: {
+      icon: MailX,
+      tone: 'text-rose-600',
+      title: t('verify.errorTitle'),
+      body: t('verify.errorBody', { detail: state.detail || '' }),
+    },
   }
   const view = views[shown]
   const Icon = view.icon
